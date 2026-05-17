@@ -1,0 +1,34 @@
+name: Release
+
+# PhoneMic 发布工作流（占位）
+#
+# 设计来源：design.md §3、§9（三平台分发）
+# 任务来源：tasks.md 1.4（脚手架）；完整实现位于 tasks.md 14.3
+#
+# 本工作流目前仅作为占位，避免在打包流程未完成前误触发发布动作。
+# 仅支持手动触发（workflow_dispatch）。
+#
+# TODO(14.3): 实现三平台打包（Win .msi / macOS .dmg + .pkg / Linux .deb + .AppImage）、
+#   代码签名、产物上传与 GitHub Release 发布等步骤。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version tag (e.g. v0.1.0). Leave empty for dry-run."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  placeholder:
+    name: Placeholder (to be implemented in task 14.3)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notice
+        run: |
+          echo "Release workflow is intentionally empty."
+          echo "Implementation tracked in .kiro/specs/phone-mic-voice-input/tasks.md task 14.3."
+          echo "Inputs.version=${{ inputs.version }}"

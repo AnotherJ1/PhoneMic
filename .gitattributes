@@ -1,0 +1,48 @@
+# 统一行尾与二进制识别
+# 任务来源：tasks.md 1.1
+
+* text=auto eol=lf
+
+# Windows 平台脚本保留 CRLF
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Shell / Unix 脚本固定 LF
+*.sh        text eol=lf
+
+# 源代码（始终以 LF 提交）
+*.rs        text eol=lf diff=rust
+*.toml      text eol=lf
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.vue       text eol=lf
+*.json      text eol=lf
+*.jsonc     text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.md        text eol=lf
+*.css       text eol=lf
+*.scss      text eol=lf
+*.html      text eol=lf
+
+# 二进制资源
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.icns      binary
+*.webp      binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.otf       binary
+*.mp3       binary
+*.wav       binary
+*.bin       binary
+
+# Cargo.lock 在 GitHub 比较时用普通文本，但建议生成器友好
+Cargo.lock  text eol=lf -diff merge=ours

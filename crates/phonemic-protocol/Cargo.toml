@@ -1,0 +1,24 @@
+# 共享协议 / 类型定义
+# 设计来源：design.md §5；任务来源：tasks.md 2.x
+
+[package]
+name        = "phonemic-protocol"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+description = "Shared types & wire protocol between desktop and mobile clients"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde      = { workspace = true }
+serde_json = { workspace = true }
+thiserror  = { workspace = true }
+toml       = { workspace = true }
+
+[dev-dependencies]
+# 任务 2.6 / Property 11：文本协议 Unicode round-trip
+proptest   = { workspace = true }

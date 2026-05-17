@@ -1,0 +1,10 @@
+# pnpm 工作区清单
+#
+# 设计来源：design.md §3.4（前端使用 Vue 3 + Vite，构建产物输出至 src-tauri 资源目录）
+# 任务来源：tasks.md 1.4 — 在仓库根目录添加 pnpm-workspace.yaml 统一前端依赖
+#
+# 工作区当前仅包含 apps/* 下的前端 / 桌面壳工程；
+# 未来若新增前端工具（如 packages/ts-protocol），按需扩展。
+
+packages:
+  - "apps/*"

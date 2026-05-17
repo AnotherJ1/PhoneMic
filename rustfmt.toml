@@ -1,0 +1,14 @@
+# 统一 Rust 格式化规则
+#
+# 设计来源：design.md §9 测试与门禁；tasks.md 1.1
+# 仅使用 stable 通道支持的稳定项；nightly-only 选项不在此启用，
+# 以保证 CI（lockfile 工具链 1.75）能够直接运行 `cargo fmt --check`。
+
+edition         = "2021"
+max_width       = 100
+hard_tabs       = false
+tab_spaces      = 4
+newline_style   = "Unix"
+use_small_heuristics = "Default"
+reorder_imports = true
+reorder_modules = true

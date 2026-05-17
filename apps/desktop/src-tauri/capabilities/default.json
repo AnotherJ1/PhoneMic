@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "PhoneMic 主窗口默认能力集（任务 1.2 / design §4.1）。当前阶段仅开放窗口控制与事件总线；后续任务在此添加 fs / shell / notification / clipboard 等业务必须能力。Tauri schema 由 tauri-build 在编译期校验。",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:webview:default",
+    "core:event:default",
+    "core:menu:default",
+    "core:tray:default"
+  ]
+}

@@ -1,0 +1,57 @@
+# PhoneMic 桌面端 Tauri 2.x 入口 crate
+#
+# 设计来源：.kiro/specs/phone-mic-voice-input/design.md §3.1（Tauri 选型）、§4.1（AppController）
+# 任务来源：.kiro/specs/phone-mic-voice-input/tasks.md 1.2
+#
+# 该 crate 是 Tauri 二进制入口，本身不实现业务逻辑，仅负责：
+#   1. 启用 Tauri runtime（含托盘 / tray-icon 能力）
+#   2. 装配单实例插件（避免重复启动 Web Server）
+#   3. 通过 `phonemic-app` 调用 `phonemic-core` / `phonemic-injector` 等业务层
+#
+# `cargo tauri build` 会读取相邻的 `tauri.conf.json` 完成跨平台打包。
+
+[package]
+name        = "phonemic-desktop"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+description = "PhoneMic Tauri 2.x desktop shell (tray + single-instance)"
+
+# Tauri 官方推荐的 lib + bin 双入口：
+#   - 库（cdylib + rlib）暴露 `run()` 函数，便于未来扩展移动端目标
+#   - 二进制 `src/main.rs` 仅做最小包装
+[lib]
+name       = "phonemic_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+# 共享类型 / 协议（任务 2.x），便于注册 Tauri 命令时使用统一 schema
+phonemic-protocol = { path = "../../../crates/phonemic-protocol" }
+# 业务装配层（任务 10.x 在此实现 AppController）
+phonemic-app      = { path = "../../../crates/phonemic-app" }
+
+tauri                        = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
+
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+anyhow      = { workspace = true }
+tracing     = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# 运行时（业务层会用到 tokio，这里仅 re-export 默认 features 以便 Tauri 命令异步化）
+tokio = { workspace = true }
+
+# Tauri 2.x 默认特性集
+[features]
+default       = ["custom-protocol"]
+# `custom-protocol` 由 `tauri build` 注入，避免开发模式下尝试嵌入资源
+custom-protocol = ["tauri/custom-protocol"]

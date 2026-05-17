@@ -1,0 +1,21 @@
+# mDNS 发现与连接信息广播
+# 设计来源：design.md §3.6、§3.7、§4.4；任务来源：tasks.md 6.x
+
+[package]
+name        = "phonemic-discovery"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+description = "LAN discovery (mDNS) and QR-code rendering for PhoneMic"
+
+[lints]
+workspace = true
+
+[dependencies]
+phonemic-protocol = { path = "../phonemic-protocol" }
+
+serde     = { workspace = true }
+thiserror = { workspace = true }
+tracing   = { workspace = true }

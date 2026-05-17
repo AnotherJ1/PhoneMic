@@ -1,0 +1,75 @@
+# 任务来源：tasks.md 1.1
+# 设计来源：design.md §2.2、§5.4（Session_Token 落盘加密；密钥目录不入库）
+
+# ------------------------------------------------------------
+# Rust / Cargo
+# ------------------------------------------------------------
+target/
+**/target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# proptest 失败用例区分回归（按 design §9.2 应当提交，但运行期临时输出忽略）
+**/proptest-regressions/*.tmp
+
+# ------------------------------------------------------------
+# Tauri (apps/desktop/src-tauri)
+# ------------------------------------------------------------
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/WixTools/
+
+# ------------------------------------------------------------
+# Node / pnpm / 前端 (apps/mobile)
+# ------------------------------------------------------------
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+**/dist/
+**/dist-ssr/
+**/.vite/
+**/.turbo/
+**/.cache/
+
+# 移动端构建产物会被 vite 输出到 src-tauri/resources/web/，不入库
+apps/desktop/src-tauri/resources/web/
+
+# ------------------------------------------------------------
+# IDE / 操作系统
+# ------------------------------------------------------------
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ------------------------------------------------------------
+# 机密 / 本地配置（不应提交）
+# ------------------------------------------------------------
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+.env
+.env.*
+!.env.example
+config.local.toml
+secrets/
+
+# ------------------------------------------------------------
+# 日志与覆盖率报告
+# ------------------------------------------------------------
+*.log
+logs/
+coverage/
+**/lcov.info
+**/llvm-cov*.json

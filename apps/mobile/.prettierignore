@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+../desktop/src-tauri/resources/web
+pnpm-lock.yaml
+package-lock.json
+yarn.lock

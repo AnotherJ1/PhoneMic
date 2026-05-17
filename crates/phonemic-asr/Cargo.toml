@@ -1,0 +1,21 @@
+# Server_ASR 引擎与桥接
+# 设计来源：design.md §3.8、§4.6；任务来源：tasks.md 8.x
+
+[package]
+name        = "phonemic-asr"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+description = "Server-side ASR engine bridge (whisper.cpp adapter, fallback only)"
+
+[lints]
+workspace = true
+
+[dependencies]
+phonemic-protocol = { path = "../phonemic-protocol" }
+
+serde     = { workspace = true }
+thiserror = { workspace = true }
+tracing   = { workspace = true }

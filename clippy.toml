@@ -1,0 +1,20 @@
+# Clippy 自定义规则
+#
+# 设计来源：design.md §9.7（PR 门禁要求 `cargo clippy -D warnings`）
+# 任务来源：tasks.md 1.1
+#
+# 仅使用稳定通道支持的字段；更细粒度的 lint 等级在
+# 根 `Cargo.toml` 的 [workspace.lints.clippy] 中统一声明。
+
+# 认知复杂度上限（默认 25），略宽以容纳状态机与协议分发
+cognitive-complexity-threshold = 30
+
+# 函数参数个数上限（默认 7）
+too-many-arguments-threshold = 8
+
+# `large_enum_variant` 的字节阈值（默认 200），避免协议枚举过早告警
+enum-variant-size-threshold = 256
+
+# 允许在测试 / 文档中使用 `unwrap` 等惯用法
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

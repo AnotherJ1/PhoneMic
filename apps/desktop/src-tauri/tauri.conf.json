@@ -1,0 +1,99 @@
+{
+  "productName": "PhoneMic",
+  "version": "0.1.0",
+  "identifier": "io.phonemic.desktop",
+
+  "//": [
+    "PhoneMic 桌面端 Tauri 2.x 配置 —— 任务 1.2 / design §3.1, §3.4, §4.1。",
+    "前端产物：apps/mobile/ 经 Vite 构建后输出到 apps/desktop/src-tauri/resources/web/",
+    "（详见任务 1.3 / design §3.4），由 frontendDist 直接引用。",
+    "支持平台：Windows 10+ / macOS 11+ / Ubuntu 20.04+（需求 R1.1）。",
+    "Tauri 2.x JSON Schema URL 已知，但为遵循环境约束未在文件中内嵌远程 schema。"
+  ],
+
+  "build": {
+    "frontendDist": "./resources/web",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm --filter phonemic-mobile dev",
+    "beforeBuildCommand": "pnpm --filter phonemic-mobile build"
+  },
+
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "PhoneMic",
+        "width": 880,
+        "height": 600,
+        "minWidth": 720,
+        "minHeight": 480,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "visible": true,
+        "center": true
+      }
+    ],
+    "trayIcon": {
+      "id": "phonemic-tray",
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false,
+      "tooltip": "PhoneMic"
+    },
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http: https:"
+    }
+  },
+
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage", "msi", "dmg"],
+    "category": "Productivity",
+    "shortDescription": "Use your phone as a wireless microphone for keyboard input",
+    "longDescription": "PhoneMic turns any smartphone on the same LAN into a wireless microphone for your computer. Speak on the phone, get text injected at the cursor on Windows / macOS / Linux.",
+    "publisher": "PhoneMic Contributors",
+    "copyright": "Copyright 2025 PhoneMic Contributors",
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "resources": [],
+    "windows": {
+      "//": [
+        "Windows 10 1809 (build 17763) 起稳定支持 WebView2，对应 R1.1 的 Win10+。",
+        "WebView2 安装策略：downloadBootstrapper 在用户首次安装时按需下载。"
+      ],
+      "wix": {
+        "language": ["zh-CN", "en-US"],
+        "upgradeCode": "9F94B0D6-4E68-4E7B-9E41-6A8B12B30001"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "allowDowngrades": false
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "//": "对应 R1.1 的 macOS 11 (Big Sur) 及以上。",
+      "exceptionDomain": "",
+      "frameworks": []
+    },
+    "linux": {
+      "//": "Tauri 2 schema 未直接暴露 minOSVersion；Ubuntu 20.04+ 通过 webkit2gtk-4.1 依赖间接满足，详见 apps/desktop/README.md。",
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  }
+}

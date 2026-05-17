@@ -1,0 +1,36 @@
+# 桌面端业务逻辑（Web Server、Pairing、状态机等）
+# 设计来源：design.md §4.1–§4.4、§4.6；任务来源：tasks.md 3.x / 5.x / 8.x
+
+[package]
+name        = "phonemic-core"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+description = "PhoneMic desktop core: pairing, web server, state machines"
+
+[lints]
+workspace = true
+
+[dependencies]
+phonemic-protocol = { path = "../phonemic-protocol" }
+
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+anyhow      = { workspace = true }
+tokio       = { workspace = true }
+tracing     = { workspace = true }
+
+# 任务 3.9 / 3.11 / 3.13 / 3.15：Pairing_Code 加密随机源 + 恒定时间比较 + Session token 生成
+rand        = { workspace = true }
+subtle      = { workspace = true }
+sha2        = { workspace = true }
+base64      = { workspace = true }
+# 任务 3.20：日志摘要（SHA-256 前 8 字节）以脱敏文本明文
+hex         = { workspace = true }
+
+[dev-dependencies]
+# 任务 3.x 属性测试将依赖 proptest
+proptest    = { workspace = true }

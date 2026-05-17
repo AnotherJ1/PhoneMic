@@ -1,0 +1,31 @@
+# EditorConfig 跨编辑器统一规则
+# 文档：https://editorconfig.org/
+#
+# 任务来源：tasks.md 1.1
+
+root = true
+
+[*]
+charset                  = utf-8
+end_of_line              = lf
+insert_final_newline     = true
+trim_trailing_whitespace = true
+indent_style             = space
+indent_size              = 4
+
+# Rust 与 rustfmt.toml 保持一致（4 空格缩进 / 100 列）
+[*.{rs,toml}]
+indent_size = 4
+max_line_length = 100
+
+# 前端 / Vue / 配置文件使用 2 空格缩进
+[*.{ts,tsx,js,jsx,vue,json,jsonc,yml,yaml,html,css,scss,md}]
+indent_size = 2
+
+# Markdown 行尾空格用于强制换行，需保留
+[*.md]
+trim_trailing_whitespace = false
+
+# Makefile 必须使用 Tab
+[Makefile]
+indent_style = tab

@@ -1,0 +1,26 @@
+# Tauri 桌面端进程入口（业务装配层）
+# 设计来源：design.md §4.1；任务来源：tasks.md 1.2 / 10.x
+
+[package]
+name        = "phonemic-app"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+description = "Tauri desktop entry — wires phonemic-core / discovery / injector / asr"
+
+[lints]
+workspace = true
+
+[dependencies]
+phonemic-core      = { path = "../phonemic-core" }
+phonemic-protocol  = { path = "../phonemic-protocol" }
+phonemic-injector  = { path = "../phonemic-injector" }
+phonemic-discovery = { path = "../phonemic-discovery" }
+phonemic-asr       = { path = "../phonemic-asr" }
+
+anyhow             = { workspace = true }
+tokio              = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }

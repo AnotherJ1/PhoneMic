@@ -1,0 +1,21 @@
+# 跨平台键盘注入抽象
+# 设计来源：design.md §3.5、§4.5；任务来源：tasks.md 7.x
+
+[package]
+name        = "phonemic-injector"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+repository.workspace   = true
+description = "Cross-platform keyboard injection backend (Windows / macOS / Linux)"
+
+[lints]
+workspace = true
+
+[dependencies]
+phonemic-protocol = { path = "../phonemic-protocol" }
+
+serde     = { workspace = true }
+thiserror = { workspace = true }
+tracing   = { workspace = true }

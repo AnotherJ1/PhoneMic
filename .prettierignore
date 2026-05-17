@@ -1,0 +1,37 @@
+# Prettier 忽略列表
+#
+# 任务来源：tasks.md 1.4
+# 与 .gitignore 行为对齐，避免格式化构建产物 / 依赖 / 二进制资产。
+
+# 构建产物
+**/dist/
+**/dist-ssr/
+**/target/
+**/.vite/
+**/.turbo/
+**/.cache/
+
+# 依赖
+**/node_modules/
+.pnpm-store/
+
+# Tauri 生成物
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/resources/web/
+
+# 锁文件由 pnpm / cargo 自身维护
+pnpm-lock.yaml
+Cargo.lock
+
+# 不需要 Prettier 处理的格式
+*.svg
+*.ico
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.mp3
+*.wav
+*.bin

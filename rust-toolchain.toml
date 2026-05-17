@@ -1,0 +1,19 @@
+# 锁定 Rust 工具链版本
+#
+# 设计来源：design.md §3.2 — 后端语言选定 Rust，最低版本 1.75
+# 任务来源：tasks.md 1.1
+#
+# 选用稳定版 1.75，该版本起 `async fn in trait`、`return-position impl Trait`
+# 等关键能力已 GA，能够覆盖 axum / tokio-tungstenite 的常见用法。
+
+[toolchain]
+channel    = "1.75.0"
+profile    = "default"
+components = ["rustfmt", "clippy", "rust-src"]
+targets    = [
+    # 桌面端三平台目标
+    "x86_64-pc-windows-msvc",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+]
