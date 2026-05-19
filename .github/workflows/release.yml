@@ -1,34 +1,186 @@
 name: Release
 
-# PhoneMic 发布工作流（占位）
+# PhoneMic 三平台分发流水线 —— 任务 14.3
 #
-# 设计来源：design.md §3、§9（三平台分发）
-# 任务来源：tasks.md 1.4（脚手架）；完整实现位于 tasks.md 14.3
+# 任务来源：tasks.md 14.3
+# 关联需求：R1.1
+# 设计来源：design.md §3.1, §9.7
 #
-# 本工作流目前仅作为占位，避免在打包流程未完成前误触发发布动作。
-# 仅支持手动触发（workflow_dispatch）。
-#
-# TODO(14.3): 实现三平台打包（Win .msi / macOS .dmg + .pkg / Linux .deb + .AppImage）、
-#   代码签名、产物上传与 GitHub Release 发布等步骤。
+# 触发：tag `v*`。在 windows-latest / macos-14 / ubuntu-22.04 三平台
+# 并行：构建桌面端 + 移动端 SPA → tauri bundle → 平台签名 → 上传产物。
+# 任一 leg 失败则整条流水线 fail-closed（不创建 GitHub Release）。
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version tag (e.g. v0.1.0). Leave empty for dry-run."
-        required: false
-        default: ""
+        description: "Release version tag (e.g. v0.1.0)"
+        required: true
 
 permissions:
-  contents: read
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
 
 jobs:
-  placeholder:
-    name: Placeholder (to be implemented in task 14.3)
-    runs-on: ubuntu-latest
+  version-check:
+    name: Verify Cargo version matches git tag
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Notice
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Assert version match
+        shell: bash
         run: |
-          echo "Release workflow is intentionally empty."
-          echo "Implementation tracked in .kiro/specs/phone-mic-voice-input/tasks.md task 14.3."
-          echo "Inputs.version=${{ inputs.version }}"
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          # Read workspace version directly from Cargo.toml [workspace.package]
+          cargo_ver=$(awk '
+            /^\[workspace\.package\]/ { in_section=1; next }
+            /^\[/ { in_section=0 }
+            in_section && /^version[[:space:]]*=/ {
+              gsub(/.*= *"/, ""); gsub(/".*/, ""); print; exit
+            }
+          ' Cargo.toml)
+          echo "git tag version: $tag"
+          echo "Cargo workspace version: $cargo_ver"
+          if [[ "$tag" != "$cargo_ver" ]]; then
+            echo "❌ git tag ($tag) does not match Cargo.toml workspace version ($cargo_ver)" >&2
+            exit 1
+          fi
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: version-check
+    if: always() && (needs.version-check.result == 'success' || needs.version-check.result == 'skipped')
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: phonemic-windows
+            tauri_targets: ''
+          - os: macos-14
+            artifact_name: phonemic-macos
+            tauri_targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+          - os: ubuntu-22.04
+            artifact_name: phonemic-linux
+            tauri_targets: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.os }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Linux system deps
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev \
+            librsvg2-dev libudev-dev pkg-config
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build mobile SPA
+        run: pnpm -C apps/mobile build
+
+      - name: Install Tauri CLI
+        shell: bash
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Tauri build (matrix targets)
+        if: matrix.tauri_targets != ''
+        shell: bash
+        run: |
+          for target in $(echo "${{ matrix.tauri_targets }}" | tr ',' ' '); do
+            cargo tauri build --target "$target"
+          done
+
+      - name: Tauri build (default target)
+        if: matrix.tauri_targets == ''
+        shell: bash
+        run: cargo tauri build
+
+      - name: Sign Windows artefacts
+        if: matrix.os == 'windows-latest'
+        env:
+          CODESIGN_CERT_PFX_BASE64: ${{ secrets.CODESIGN_CERT_PFX_BASE64 }}
+          CODESIGN_CERT_PASSWORD: ${{ secrets.CODESIGN_CERT_PASSWORD }}
+          CODESIGN_TIMESTAMP_URL: http://timestamp.digicert.com
+        run: pwsh -File scripts/sign-windows.ps1 -ArtifactsDir target/release/bundle
+
+      - name: Sign macOS artefacts
+        if: matrix.os == 'macos-14'
+        env:
+          CODESIGN_APPLE_CERT_P12_BASE64: ${{ secrets.CODESIGN_APPLE_CERT_P12_BASE64 }}
+          CODESIGN_APPLE_CERT_PASSWORD: ${{ secrets.CODESIGN_APPLE_CERT_PASSWORD }}
+          APPLE_ID_USERNAME: ${{ secrets.APPLE_ID_USERNAME }}
+          APPLE_ID_TEAM_ID: ${{ secrets.APPLE_ID_TEAM_ID }}
+          APPLE_ID_APP_PASSWORD: ${{ secrets.APPLE_ID_APP_PASSWORD }}
+        run: bash scripts/sign-macos.sh target/release/bundle
+
+      - name: Upload artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: target/release/bundle/**/*
+          if-no-files-found: error
+
+  release-notes:
+    name: Draft RELEASE_NOTES.md
+    needs: build
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate release notes
+        run: bash scripts/generate-release-notes.sh > RELEASE_NOTES.md
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+
+  publish:
+    name: Publish GitHub Release
+    needs: [build, release-notes]
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          body_path: dist/release-notes/RELEASE_NOTES.md
+          fail_on_unmatched_files: true

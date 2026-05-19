@@ -15,7 +15,19 @@ workspace = true
 
 [dependencies]
 phonemic-protocol = { path = "../phonemic-protocol" }
+phonemic-core     = { path = "../phonemic-core" }
 
-serde     = { workspace = true }
-thiserror = { workspace = true }
-tracing   = { workspace = true }
+serde       = { workspace = true }
+thiserror   = { workspace = true }
+tracing     = { workspace = true }
+tokio       = { workspace = true }
+async-trait = { workspace = true }
+bytes       = { workspace = true }
+
+[features]
+default = []
+# 启用 whisper-rs 适配器；CI 默认关闭（任务 8.4）。
+whisper = []
+
+[dev-dependencies]
+proptest = { workspace = true }

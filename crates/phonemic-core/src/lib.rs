@@ -27,3 +27,16 @@ pub mod pairing_service;
 pub mod rolling_log;
 // 任务 3.22 i18n 字典 + locale 决策
 pub mod i18n;
+// 任务 13.1 / 13.5 统一错误转换层
+pub mod error;
+// 任务 13.2 tracing 接入（与 rolling_log 配合）
+pub mod tracing_setup;
+// 任务 13.4 诊断包导出
+pub mod diagnostics;
+
+// 任务 5.6 / 5.14 / 6.2 / 7.11 / 8.5 跨子系统事件总线
+pub mod bridge_events;
+// 任务 5.11 / 7.11 / 8.5 WebSocket 出站消息抽象
+pub mod ws_outbound;
+// 任务 5.x Web Server (axum + tower-http + tokio-tungstenite)
+pub mod web;

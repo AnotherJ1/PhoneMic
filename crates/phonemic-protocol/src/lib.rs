@@ -23,6 +23,10 @@ pub use error_obj::AppError;
 /// 协议版本号，写入 `welcome` 消息的 `protocol` 字段。
 pub const PROTOCOL_VERSION: &str = "1";
 
+/// 任务 14.2：编译期注入的 crate 版本号，与 `Cargo.toml` 同步。
+/// 用于 `/api/health.version` 字段；CI release 流水线会断言其与 git tag 一致。
+pub const VERSION: &str = env!("PHONEMIC_PROTOCOL_VERSION");
+
 pub mod config;
 pub mod ws;
 

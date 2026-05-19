@@ -73,3 +73,11 @@ logs/
 coverage/
 **/lcov.info
 **/llvm-cov*.json
+
+# ------------------------------------------------------------
+# OMC / Claude Code 会话产物（仅 handoffs 与 plans 入库）
+# ------------------------------------------------------------
+.claude/
+.omc/*
+!.omc/handoffs/
+!.omc/plans/

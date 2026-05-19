@@ -606,3 +606,130 @@ mod tests {
         assert_eq!(token_a.as_str(), token_b.as_str());
     }
 }
+
+// ----------------------------------------------------------------------------
+// Property tests
+// ----------------------------------------------------------------------------
+// 任务 3.16 / 3.17：Session 生命周期 + 已配对设备 CRUD 属性测试。
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::collections::{BTreeSet, HashMap};
+    use std::time::Duration;
+
+    fn ts(secs: u64) -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(secs)
+    }
+
+    /// 高层操作脚本：用于驱动 `SessionRegistry` 的状态机式属性测试。
+    #[derive(Debug, Clone)]
+    enum Op {
+        /// 颁发一个新 token；fingerprint 由 `fp_idx` 选定（小整数池）。
+        Issue { fp_idx: u8, label: u8 },
+        /// 撤销之前已颁发的第 `pos` 个 token（按 issue 顺序，对总量取模）。
+        RevokeIssued { pos: u32 },
+        /// 撤销某 fingerprint 下的所有 token。
+        RevokeDevice { fp_idx: u8 },
+        /// 校验当前所有曾颁发过的 token，断言与历史模型保持一致。
+        ValidateAll,
+    }
+
+    fn op_seq() -> impl Strategy<Value = Vec<Op>> {
+        prop::collection::vec(
+            prop_oneof![
+                (0u8..4, 0u8..16).prop_map(|(fp_idx, label)| Op::Issue { fp_idx, label }),
+                (0u32..32).prop_map(|pos| Op::RevokeIssued { pos }),
+                (0u8..4).prop_map(|fp_idx| Op::RevokeDevice { fp_idx }),
+                Just(Op::ValidateAll),
+            ],
+            0..40,
+        )
+    }
+
+    proptest! {
+        // Feature: phone-mic-voice-input, Property 18: Session_Token 生命周期
+        // Feature: phone-mic-voice-input, Property 20: 已配对设备 CRUD
+        //
+        // 在任意 issue / revoke / revoke_device 操作序列下断言：
+        //   - validate(token) 在每一步与"历史模型"一致：
+        //       * 已 issue 但从未被 revoke* → Ok(session)
+        //       * issue 后被任一种 revoke 触及 → Err(Revoked)
+        //       * 从未 issue 过 → Err(NotFound)
+        //   - list_sessions() 等于"按时间应用后"未被吊销的 token 集合（按 token 字符串）。
+        #[test]
+        fn property_18_and_20_session_lifecycle_and_crud(ops in op_seq()) {
+            let mut reg = SessionRegistry::new();
+
+            // 按 issue 顺序记录所有曾颁发过的 token；元素一旦写入不再删除。
+            let mut history: Vec<(SessionToken, DeviceFingerprint)> = Vec::new();
+            // token 字符串 → 是否被吊销（ground-truth 模型）。
+            let mut revoked_model: HashMap<String, bool> = HashMap::new();
+
+            let mut now_secs: u64 = 1_000;
+
+            for op in ops {
+                match op {
+                    Op::Issue { fp_idx, label } => {
+                        let fp = DeviceFingerprint::from(format!("fp-{fp_idx}"));
+                        let token = reg.issue(fp.clone(), format!("L-{label}"), ts(now_secs));
+                        revoked_model.insert(token.as_str().to_owned(), false);
+                        history.push((token, fp));
+                        now_secs += 1;
+                    }
+                    Op::RevokeIssued { pos } => {
+                        if history.is_empty() { continue; }
+                        let idx = (pos as usize) % history.len();
+                        let token = history[idx].0.clone();
+                        reg.revoke(&token);
+                        revoked_model.insert(token.as_str().to_owned(), true);
+                    }
+                    Op::RevokeDevice { fp_idx } => {
+                        let fp = DeviceFingerprint::from(format!("fp-{fp_idx}"));
+                        reg.revoke_device(&fp);
+                        for (tok, this_fp) in &history {
+                            if this_fp == &fp {
+                                revoked_model.insert(tok.as_str().to_owned(), true);
+                            }
+                        }
+                    }
+                    Op::ValidateAll => {
+                        // 已颁发 token 的 validate 必须与模型一致。
+                        for (tok, _fp) in &history {
+                            let revoked = *revoked_model.get(tok.as_str()).unwrap_or(&false);
+                            match reg.validate(tok) {
+                                Ok(s) => {
+                                    prop_assert!(!revoked, "未被吊销但模型说应有效");
+                                    prop_assert_eq!(s.token.as_str(), tok.as_str());
+                                }
+                                Err(AuthError::Revoked) => {
+                                    prop_assert!(revoked, "模型未标记吊销但 registry 返回 Revoked");
+                                }
+                                Err(AuthError::NotFound) => {
+                                    prop_assert!(false, "已 issue 的 token 不应返回 NotFound");
+                                }
+                            }
+                        }
+                        // 从未颁发过的 token 必为 NotFound。
+                        let unknown = SessionToken::from_validated("Z".repeat(43));
+                        if !revoked_model.contains_key(unknown.as_str()) {
+                            prop_assert_eq!(reg.validate(&unknown), Err(AuthError::NotFound));
+                        }
+                    }
+                }
+            }
+
+            // Property 20：list_sessions 返回的 token 集合 == 模型中未吊销集合。
+            let live_model: BTreeSet<String> = revoked_model
+                .iter()
+                .filter_map(|(k, &rev)| if !rev { Some(k.clone()) } else { None })
+                .collect();
+            let live_actual: BTreeSet<String> = reg
+                .list_sessions()
+                .iter()
+                .map(|s| s.token.as_str().to_owned())
+                .collect();
+            prop_assert_eq!(live_actual, live_model);
+        }
+    }
+}

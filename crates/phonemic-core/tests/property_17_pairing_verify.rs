@@ -90,7 +90,8 @@ proptest! {
         prop_assert_eq!(
             actual,
             expected,
-            "verify 与字节相等不一致：seed={seed}, candidate_len={}",
+            "verify 与字节相等不一致：seed={}, candidate_len={}",
+            seed,
             candidate.len(),
         );
     }

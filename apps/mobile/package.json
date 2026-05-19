@@ -13,13 +13,22 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "type-check": "vue-tsc --noEmit",
-    "test": "vitest --run"
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest --run --coverage",
+    "e2e": "playwright test"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "jsqr": "^1.4.0",
+    "pinia": "^2.1.7",
     "vue": "^3.4.27",
     "vue-router": "^4.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.45.0",
+    "@testing-library/vue": "^8.1.0",
     "@types/node": "^20.12.12",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
@@ -27,6 +36,7 @@
     "@unocss/preset-typography": "^0.61.0",
     "@unocss/preset-uno": "^0.61.0",
     "@vitejs/plugin-vue": "^5.0.5",
+    "@vitest/coverage-v8": "^1.6.0",
     "@vue/eslint-config-prettier": "^9.0.0",
     "@vue/eslint-config-typescript": "^13.0.0",
     "@vue/test-utils": "^2.4.6",

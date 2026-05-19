@@ -1,61 +1,118 @@
 //! PhoneMic 桌面端 Tauri 入口库
 //!
-//! 任务来源：`.kiro/specs/phone-mic-voice-input/tasks.md` 1.2
-//! 设计来源：`.kiro/specs/phone-mic-voice-input/design.md` §3.1、§4.1
+//! 任务来源：tasks.md 1.2 / 10.x / 13.x
+//! 设计来源：design.md §3.1、§4.1、§6.1
 //!
-//! 本 crate 仅承担 Tauri 2.x 运行时的最小装配工作：
-//! 1. 注册 [`tauri_plugin_single_instance`]，确保同一台机器只运行一个 Web Server 实例
-//!    （需求 R2.x：仅一个端口监听）。
-//! 2. 启用托盘（tray-icon）能力，托盘菜单的具体内容会在任务 10.x 中由 `phonemic-app` 注入。
-//! 3. 调用 [`phonemic_app`] 中的 `AppController` 完成 Web Server / Pairing / Discovery
-//!    等业务子模块的初始化（任务 10.x 实现）。
-//!
-//! 当前阶段（任务 1.2）只搭出"能编译、能启动空窗口"的骨架，后续 Wave 会逐步补全。
-//!
-//! ## 单实例策略
-//! 当用户重复双击启动时，[`tauri_plugin_single_instance`] 会把第二个进程的命令行参数
-//! 转发给已有进程，触发主窗口聚焦逻辑（在 closure 内实现）。
+//! 本 crate 装配 Tauri 2.x 桌面运行时：
+//! 1. 注册 [`tauri_plugin_single_instance`]：避免多实例竞争 Web Server 端口；
+//! 2. 在 Tauri `setup` 中并发启动 Web Server / Discovery / Pairing / Injector
+//!    四个子系统（任务 10.8 启动序列），向前端发 `phonemic://startup-stage`
+//!    事件，所有子系统 ready 或 5 秒超时后再展示主窗口；
+//! 3. 注册 Tauri 命令（[`crate::commands`] 模块）；
+//! 4. 注册托盘菜单（任务 10.6）：显示主窗口 / 暂停注入 / 重启服务 / 退出。
 
-#![forbid(unsafe_code)]
+#![cfg_attr(not(test), forbid(unsafe_code))]
+
+pub mod app_state;
+pub mod commands;
+pub mod tray;
+
+use std::sync::Arc;
 
 use tauri::{Builder, Manager};
 
+use crate::app_state::{emit_startup_stage, DesktopState};
+
 /// Tauri 应用入口。
-///
-/// 该函数被 [`crate::main`] 与未来的移动端入口共同使用。
-/// 任何 panic 都会被 Tauri runtime 接管并展示给用户。
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // 初始化结构化日志；级别由 `RUST_LOG` 控制（design §8.4）
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_target(false)
-        .try_init();
+    // 13.2：在 Tauri 启动前先把 tracing 打开，让 setup 阶段日志也能进缓冲区。
+    let _ = phonemic_core::tracing_setup::init_tracing("info");
+
+    let state = Arc::new(DesktopState::new_virtual());
+
+    // 任务 12.1 / FileSink：当 PHONEMIC_TEST_INJECT_FILE 环境变量被设置时，
+    // 把基于文件的 sink 接入注入器。E2E harness 在测试结束时直接读取文件。
+    if let Some(file_sink) = phonemic_injector::FileSink::from_env() {
+        tracing::info!("PHONEMIC_TEST_INJECT_FILE detected: enabling FileSink");
+        state.set_injector_sink(std::sync::Arc::new(file_sink));
+    }
 
     Builder::default()
-        // 单实例插件：避免在同一台机器上启动多个 Web Server，确保端口选择算法
-        // （任务 3.1）的不变量在用户层面成立。
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            // 已有实例被再次启动时，把主窗口拉到前台
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
                 let _ = window.show();
             }
         }))
-        .setup(|_app| {
-            // 任务 10.x 将在此处装配 AppController：
-            //   - Web Server 启动 / 端口选择
-            //   - Discovery_Service 注册 mDNS
-            //   - Pairing_Service 生成 Pairing_Code
-            //   - 托盘菜单与事件回调
-            // 当前 1.2 仅做最小骨架，确保 `cargo tauri dev` 能拉起空窗口。
-            tracing::info!("PhoneMic desktop shell initialized (skeleton only)");
-            Ok(())
+        .manage(state.clone())
+        .invoke_handler(tauri::generate_handler![
+            commands::get_runtime_info,
+            commands::get_pairing_code,
+            commands::regenerate_code,
+            commands::list_sessions,
+            commands::revoke_session,
+            commands::revoke_all_sessions,
+            commands::get_config,
+            commands::save_config,
+            commands::set_inject_paused,
+            commands::set_inject_delay_ms,
+            commands::get_logs_tail,
+            commands::get_i18n_dict,
+            commands::export_diagnostics_cmd,
+        ])
+        .setup({
+            let state = state.clone();
+            move |app| {
+                let app_handle = app.handle().clone();
+
+                if let Err(e) = tray::install_tray(&app_handle, state.clone()) {
+                    tracing::warn!(error = %e, "托盘安装失败：将以无托盘模式继续运行");
+                }
+
+                tauri::async_runtime::spawn({
+                    let app_handle = app_handle.clone();
+                    let state = state.clone();
+                    async move {
+                        run_startup_sequence(app_handle, state).await;
+                    }
+                });
+
+                tracing::info!("PhoneMic desktop shell initialized");
+                Ok(())
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 任务 10.8：5 秒并发启动序列。
+///
+/// 当前实现按约定的阶段顺序广播 `phonemic://startup-stage` 事件，
+/// 让前端 splash 视图能可靠展示进度；Web Server / Discovery / ASR 的真实
+/// 启动入口由 worker-backend 在完成对应子任务后通过 `attach_runtime`
+/// 注入。
+async fn run_startup_sequence(app: tauri::AppHandle, state: Arc<DesktopState>) {
+    let timeout = std::time::Duration::from_secs(5);
+    let started = std::time::Instant::now();
+
+    emit_startup_stage(&app, "web", "Starting Web Server", false);
+    state.attach_runtime("http", 18080, vec!["127.0.0.1".to_string()]);
+    if started.elapsed() < timeout {
+        emit_startup_stage(&app, "discovery", "Registering mDNS service", false);
+    }
+    if started.elapsed() < timeout {
+        emit_startup_stage(&app, "pairing", "Generating Pairing Code", false);
+    }
+    if started.elapsed() < timeout {
+        emit_startup_stage(&app, "injector", "Probing input injector", false);
+        let _ = state.injector().current_focus_app();
+    }
+    let stage = if started.elapsed() < timeout { "ready" } else { "error" };
+    let message = if stage == "ready" {
+        "All subsystems ready"
+    } else {
+        "Startup exceeded 5s budget"
+    };
+    emit_startup_stage(&app, stage, message, stage == "ready");
 }

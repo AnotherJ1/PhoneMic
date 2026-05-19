@@ -3,11 +3,12 @@
 # 设计来源：design.md §3.2 — 后端语言选定 Rust，最低版本 1.75
 # 任务来源：tasks.md 1.1
 #
-# 选用稳定版 1.75，该版本起 `async fn in trait`、`return-position impl Trait`
-# 等关键能力已 GA，能够覆盖 axum / tokio-tungstenite 的常见用法。
+# 实际使用 1.85+：自 idna_adapter 1.2.x 起其 Cargo.toml 使用 edition2024，
+# 需要 Cargo 1.85+ 解析。design.md §3.2 将 1.75 列为最低版本，并未限定
+# 上限，故升级到 1.85.0 稳定通道，同时保留 design 中提到的关键语言能力。
 
 [toolchain]
-channel    = "1.75.0"
+channel    = "1.89.0"
 profile    = "default"
 components = ["rustfmt", "clippy", "rust-src"]
 targets    = [

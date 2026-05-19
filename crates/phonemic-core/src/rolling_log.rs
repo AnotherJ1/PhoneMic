@@ -358,3 +358,84 @@ mod tests {
         assert!(buf.total_bytes() <= MAX_TOTAL_BYTES);
     }
 }
+
+// ----------------------------------------------------------------------------
+// Property tests
+// ----------------------------------------------------------------------------
+// Feature: phone-mic-voice-input, Property 32: 日志滚动
+//
+// 任务 3.21：任意写入序列下断言：
+//   - 每条存储的字节长度 ≤ MAX_LINE_BYTES；
+//   - 总字节数（含每行尾部隐式换行）≤ MAX_TOTAL_BYTES；
+//   - 最新写入条目（截断后）始终为缓冲区最后一行；
+//   - lines() / snapshot() 顺序一致。
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// 生成多种长度的字符串，混合短行 + 接近 MAX_LINE_BYTES + 远超 MAX_LINE_BYTES。
+    fn line_strategy() -> impl Strategy<Value = String> {
+        prop_oneof![
+            // 普通短行
+            prop::string::string_regex("[\\PC ]{0,512}").unwrap(),
+            // 接近上限
+            (1usize..(MAX_LINE_BYTES + 16)).prop_map(|n| "x".repeat(n)),
+            // 远超上限
+            (MAX_LINE_BYTES..(MAX_LINE_BYTES * 3)).prop_map(|n| "y".repeat(n)),
+        ]
+    }
+
+    proptest! {
+        // Feature: phone-mic-voice-input, Property 32: 日志滚动
+        #[test]
+        fn property_32_rolling_invariants(lines in prop::collection::vec(line_strategy(), 0..200)) {
+            let mut buf = RollingBuffer::new();
+            for line in &lines {
+                buf.push_line(line);
+            }
+
+            // 不变量 1：单条 ≤ MAX_LINE_BYTES。
+            for stored in buf.lines() {
+                prop_assert!(stored.len() <= MAX_LINE_BYTES);
+            }
+
+            // 不变量 2：累计 ≤ MAX_TOTAL_BYTES。
+            prop_assert!(buf.total_bytes() <= MAX_TOTAL_BYTES);
+
+            // 不变量 3：lines() 与 snapshot() 顺序一致。
+            let collected: Vec<String> = buf.lines().map(str::to_owned).collect();
+            prop_assert_eq!(collected.clone(), buf.snapshot());
+
+            // 不变量 4：最后一条（若存在）应等于"最后一次 push 的截断后形式"。
+            if let Some(last_input) = lines.last() {
+                let expected_last = truncate_line(last_input);
+                let actual_last = collected.last().expect("buf 非空时必有末尾");
+                prop_assert_eq!(actual_last.as_str(), expected_last.as_str());
+            }
+
+            // 不变量 5：累计 = sum(每行 len + 1)。
+            let recomputed: usize = collected.iter().map(|s| s.len() + 1).sum();
+            prop_assert_eq!(recomputed, buf.total_bytes());
+        }
+
+        // Property 32 推论：在持续灌入足以触发滚动后，缓冲区数量必然减少
+        // 至 ≤ ceil(MAX_TOTAL_BYTES / 1)，且首条不可能仍是最初写入的占位行。
+        #[test]
+        fn property_32_eviction_progresses(seed in 0u64..256) {
+            let mut buf = RollingBuffer::new();
+            // 每行 4 KB，写入足以塞满缓冲约 1.1 倍。
+            let big = "z".repeat(MAX_LINE_BYTES);
+            let total_lines = (MAX_TOTAL_BYTES / MAX_LINE_BYTES) + 8 + (seed as usize % 4);
+            for i in 0..total_lines {
+                let mut prefixed = format!("[{i:08}] ");
+                prefixed.push_str(&big[..MAX_LINE_BYTES - prefixed.len()]);
+                buf.push_line(&prefixed);
+            }
+            prop_assert!(buf.total_bytes() <= MAX_TOTAL_BYTES);
+            // 队列首条的 idx 必然 > 0（至少一条已被淘汰）。
+            let first = buf.snapshot().into_iter().next().expect("non-empty");
+            prop_assert!(!first.starts_with("[00000000]"));
+        }
+    }
+}

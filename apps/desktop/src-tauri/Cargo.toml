@@ -37,6 +37,9 @@ tauri-build = { workspace = true }
 phonemic-protocol = { path = "../../../crates/phonemic-protocol" }
 # 业务装配层（任务 10.x 在此实现 AppController）
 phonemic-app      = { path = "../../../crates/phonemic-app" }
+# 直接引用核心 / 注入器以便构建 Tauri 命令
+phonemic-core     = { path = "../../../crates/phonemic-core" }
+phonemic-injector = { path = "../../../crates/phonemic-injector" }
 
 tauri                        = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
@@ -46,6 +49,12 @@ serde_json  = { workspace = true }
 anyhow      = { workspace = true }
 tracing     = { workspace = true }
 tracing-subscriber = { workspace = true }
+sha2        = { workspace = true }
+hex         = { workspace = true }
+toml        = { workspace = true }
+
+# Tauri 命令使用 `sys-locale` 自动决策默认 UI 语言（任务 10.7）
+sys-locale  = "0.3"
 
 # 运行时（业务层会用到 tokio，这里仅 re-export 默认 features 以便 Tauri 命令异步化）
 tokio = { workspace = true }

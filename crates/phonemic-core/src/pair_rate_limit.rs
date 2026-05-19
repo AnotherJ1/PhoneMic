@@ -375,3 +375,102 @@ mod tests {
         assert_eq!(WINDOW_DURATION, FAILURE_WINDOW);
     }
 }
+
+// ----------------------------------------------------------------------------
+// Property tests
+// ----------------------------------------------------------------------------
+// Feature: phone-mic-voice-input, Property 19: 配对限流（pair rate limit）
+//
+// 任务 3.14：基于 `pair_event_seq()` 生成器与可控时间，断言：
+//   1. 任意失败序列下连续 5 次失败后 5 分钟内拒绝；
+//   2. 窗口过期后计数重置；
+//   3. 限流期间 `is_rate_limited` 始终为 `true`。
+//
+// 这里 `pair_event_seq` 用 proptest 的 strategy 直接生成，
+// 不引入额外辅助 crate；时间由测试自行推进，故无需真实时钟。
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::net::Ipv4Addr;
+    use std::time::Duration;
+
+    /// 一次配对事件：要么是失败，要么是把"测试时钟"向前推进若干秒。
+    #[derive(Debug, Clone)]
+    enum PairEvent {
+        Failure,
+        Advance(u64), // seconds
+    }
+
+    fn pair_event_seq() -> impl Strategy<Value = Vec<PairEvent>> {
+        prop::collection::vec(
+            prop_oneof![
+                Just(PairEvent::Failure),
+                (1u64..600).prop_map(PairEvent::Advance),
+            ],
+            0..40,
+        )
+    }
+
+    proptest! {
+        // Feature: phone-mic-voice-input, Property 19: 配对限流
+        #[test]
+        fn property_19_rate_limit_after_threshold(events in pair_event_seq()) {
+            let mut limiter = PairRateLimiter::new();
+            let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 42));
+            let t0 = Instant::now();
+            let mut cur = t0;
+
+            // 重放：任意失败 / 时间推进序列下，
+            //   * 若当前窗口未过期且 count >= 阈值 → 限流
+            //   * 否则不限流
+            for ev in &events {
+                match ev {
+                    PairEvent::Failure => {
+                        limiter.record_failure(ip, cur);
+                    }
+                    PairEvent::Advance(secs) => {
+                        cur += Duration::from_secs(*secs);
+                    }
+                }
+
+                // 不变量：is_rate_limited 与底层窗口状态一致。
+                let expected = match limiter.window_for(ip) {
+                    Some(w) if !w.is_expired(cur) => w.count >= FAILURE_THRESHOLD,
+                    _ => false,
+                };
+                prop_assert_eq!(limiter.is_rate_limited(ip, cur), expected);
+            }
+        }
+
+        // Feature: phone-mic-voice-input, Property 19: 配对限流（边界）
+        // 5 次连续失败后 5 分钟内必拒绝；过期后再失败计数重置回 1。
+        #[test]
+        fn property_19_five_failures_then_block_then_reset(
+            advance_secs in 1u64..295,
+        ) {
+            let mut limiter = PairRateLimiter::new();
+            let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7));
+            let t0 = Instant::now();
+
+            for _ in 0..FAILURE_THRESHOLD {
+                limiter.record_failure(ip, t0);
+            }
+            prop_assert!(limiter.is_rate_limited(ip, t0));
+
+            // 在 [1, 5min) 范围内任意推进，仍应被限流。
+            let mid = t0 + Duration::from_secs(advance_secs);
+            prop_assert!(limiter.is_rate_limited(ip, mid));
+
+            // 跨过 5 分钟后限流必然解除。
+            let after = t0 + FAILURE_WINDOW + Duration::from_secs(1);
+            prop_assert!(!limiter.is_rate_limited(ip, after));
+
+            // 过期后再失败：计数应重置为 1，不再处于限流。
+            limiter.record_failure(ip, after);
+            let w = limiter.window_for(ip).expect("recreated window");
+            prop_assert_eq!(w.count, 1);
+            prop_assert!(!limiter.is_rate_limited(ip, after));
+        }
+    }
+}

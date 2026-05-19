@@ -233,4 +233,138 @@ mod tests {
             zh_keys.difference(&en_keys).collect::<Vec<_>>(),
         );
     }
+
+    // ---- 任务 3.24：桌面端 i18n 字典完整性单元测试 ----
+    //
+    // 任务来源：tasks.md 3.24
+    // 关联需求：R8.1（zh-CN / en-US 两份字典必须同时齐全且无空翻译）
+    // 设计来源：design.md §9.3
+    //
+    // 不变量：
+    //   1. 两份字典的 key 集合完全一致；
+    //   2. 两份字典中不存在空字符串（含仅含空白字符）的 value。
+    //
+    // 该测试与上方 `zh_cn_and_en_us_share_same_keys` 相比覆盖更严格：
+    // 即便未来某个 key 被错误地填成 ""（例如复制粘贴漏译），也会立即失败。
+
+    /// 任务 3.24：zh-CN 与 en-US 字典 key 集合相等且所有 value 非空。
+    #[test]
+    fn task_3_24_zh_cn_and_en_us_dicts_are_complete() {
+        let zh = dict_for(Lang::ZhCN);
+        let en = dict_for(Lang::EnUS);
+
+        // 1. key 集合相等。
+        let zh_keys: std::collections::BTreeSet<&str> = zh.keys().copied().collect();
+        let en_keys: std::collections::BTreeSet<&str> = en.keys().copied().collect();
+        let only_in_zh: Vec<&&str> = zh_keys.difference(&en_keys).collect();
+        let only_in_en: Vec<&&str> = en_keys.difference(&zh_keys).collect();
+        assert!(
+            only_in_zh.is_empty() && only_in_en.is_empty(),
+            "zh-CN 与 en-US 字典 key 集合不一致；只在 zh-CN 中：{only_in_zh:?}；只在 en-US 中：{only_in_en:?}",
+        );
+
+        // 2. 双方都至少有一项（防止空文件被误认为相等）。
+        assert!(!zh.is_empty(), "zh-CN 字典不应为空");
+        assert!(!en.is_empty(), "en-US 字典不应为空");
+
+        // 3. 任一 value 都不得为空字符串或仅含空白字符。
+        let mut empty_zh: Vec<&str> = zh
+            .iter()
+            .filter(|(_, v)| v.trim().is_empty())
+            .map(|(k, _)| *k)
+            .collect();
+        empty_zh.sort_unstable();
+        let mut empty_en: Vec<&str> = en
+            .iter()
+            .filter(|(_, v)| v.trim().is_empty())
+            .map(|(k, _)| *k)
+            .collect();
+        empty_en.sort_unstable();
+        assert!(
+            empty_zh.is_empty() && empty_en.is_empty(),
+            "i18n 字典存在空翻译；zh-CN 空 key：{empty_zh:?}；en-US 空 key：{empty_en:?}",
+        );
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Property tests
+// ----------------------------------------------------------------------------
+// Feature: phone-mic-voice-input, Property 24: locale → lang 决策
+//
+// 任务 3.23：对任意 locale 字符串：
+//   - 若主子标签（首段，分隔符为 `-` 或 `_`）忽略大小写等于 `"zh"` → ZhCN；
+//   - 否则一律 EnUS。
+//   - decide_lang 是确定性的（同入参恒同结果）。
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// 通用 locale 字符串生成器：随机 ASCII，加各种分隔符与空白。
+    fn locale_str() -> impl Strategy<Value = String> {
+        prop_oneof![
+            // 完全任意 ASCII（含空白与分隔符）。
+            prop::string::string_regex("[\\x20-\\x7e]{0,32}").unwrap(),
+            // 形如 zh-XX / ZH_xx / fr-FR / en-us 的 BCP-47-like。
+            (
+                prop::string::string_regex("[A-Za-z]{1,3}").unwrap(),
+                prop::string::string_regex("[-_]?[A-Za-z0-9]{0,8}").unwrap()
+            )
+                .prop_map(|(a, b)| format!("{a}{b}")),
+        ]
+    }
+
+    /// 参考实现：与 `decide_lang` 等价的纯字符串解析（独立写一份对照）。
+    fn reference(locale: &str) -> Lang {
+        let trimmed = locale.trim();
+        if trimmed.is_empty() { return Lang::EnUS; }
+        let primary = trimmed
+            .split(|c: char| c == '-' || c == '_')
+            .next()
+            .unwrap_or("");
+        if primary.eq_ignore_ascii_case("zh") { Lang::ZhCN } else { Lang::EnUS }
+    }
+
+    proptest! {
+        // Feature: phone-mic-voice-input, Property 24: locale → lang 决策
+        #[test]
+        fn property_24_decide_lang_matches_spec(s in locale_str()) {
+            prop_assert_eq!(decide_lang(&s), reference(&s));
+        }
+
+        // Property 24 推论：决策必须是确定性的。
+        #[test]
+        fn property_24_decide_lang_is_deterministic(s in locale_str()) {
+            let a = decide_lang(&s);
+            let b = decide_lang(&s);
+            prop_assert_eq!(a, b);
+        }
+
+        // Property 24 推论：在合法 BCP-47 格式下，主子标签为 zh 必映射到 ZhCN。
+        #[test]
+        fn property_24_zh_primary_maps_to_zh(
+            sub in prop::string::string_regex("[A-Za-z0-9]{0,8}").unwrap(),
+            sep in prop::sample::select(vec!["-", "_"]),
+        ) {
+            // 必须使用真正的分隔符（`-` 或 `_`）把 zh 与子标签区分开，
+            // 否则 "zh" + sub 会被视为单一 primary subtag。
+            let s = format!("zh{sep}{sub}");
+            prop_assert_eq!(decide_lang(&s), Lang::ZhCN);
+            let s2 = format!("ZH{sep}{sub}");
+            prop_assert_eq!(decide_lang(&s2), Lang::ZhCN);
+            // 主子标签独立 "zh"（无 region）也应被识别。
+            prop_assert_eq!(decide_lang("zh"), Lang::ZhCN);
+        }
+
+        // 主子标签不为 zh 时（且非空）应回落 EnUS。
+        #[test]
+        fn property_24_non_zh_primary_falls_back(
+            primary in prop::string::string_regex("[A-Za-df-zA-DF-Z]{1,4}").unwrap(),
+        ) {
+            prop_assume!(!primary.eq_ignore_ascii_case("zh"));
+            // 仅当主子标签恰为 "zh" 时才映射；本生成器避开了 z+h 的精确组合即可。
+            prop_assert_eq!(decide_lang(&primary), Lang::EnUS);
+        }
+    }
 }

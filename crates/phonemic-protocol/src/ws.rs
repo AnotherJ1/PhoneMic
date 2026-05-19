@@ -207,7 +207,11 @@ pub struct InjectErrorPayload {
 }
 
 /// `transcript.final` 消息载荷（Server_ASR 返回最终识别结果）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// 注意：`conf` 字段为 `Option<f32>`，因此本结构与下游
+/// [`ServerMessageKind`] / [`ServerMessage`] 一概不派生 `Eq`
+/// （`f32` 不是全序）；测试中需做相等比较时改用 `PartialEq`。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriptFinalPayload {
     pub text: String,
