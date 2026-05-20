@@ -8,7 +8,7 @@
 //! - 「重启服务」 → 通过事件让 Web Server 重启（先广播 `phonemic://restart-requested`）；
 //! - 「退出」 → 清理后调用 `app.exit(0)`。
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
@@ -20,6 +20,10 @@ const ID_SHOW: &str = "phonemic.tray.show";
 const ID_TOGGLE_PAUSE: &str = "phonemic.tray.toggle_pause";
 const ID_RESTART: &str = "phonemic.tray.restart";
 const ID_QUIT: &str = "phonemic.tray.quit";
+
+/// 存储暂停菜单项的句柄，以便在暂停状态切换时动态更新标签文字。
+/// Tauri 2.x 的 [`MenuItem`] 是引用计数句柄，可 Clone、Send，适合静态存储。
+static PAUSE_MENU_ITEM: Mutex<Option<tauri::menu::MenuItem<tauri::Wry>>> = Mutex::new(None);
 
 /// 在 [`AppHandle`] 上安装托盘图标与菜单。
 ///
@@ -37,18 +41,20 @@ pub fn install_tray(app: &AppHandle, state: Arc<DesktopState>) -> tauri::Result<
     let restart_item = MenuItemBuilder::with_id(ID_RESTART, "Restart service").build(app)?;
     let quit_item = MenuItemBuilder::with_id(ID_QUIT, "Quit").build(app)?;
 
+    // 保存暂停菜单项句柄，供后续动态刷新标签使用。
+    *PAUSE_MENU_ITEM.lock().unwrap() = Some(pause_item.clone());
+
     let menu = MenuBuilder::new(app)
         .items(&[&show_item, &pause_item, &restart_item, &quit_item])
         .build()?;
 
-    let app_clone = app.clone();
     let _icon = TrayIconBuilder::with_id("phonemic-tray")
         .menu(&menu)
         .on_menu_event(move |app, event| {
             handle_menu_event(app, &state, event.id().as_ref());
             // 重新计算暂停标签（仅在切换时刷新）。
             if event.id().as_ref() == ID_TOGGLE_PAUSE {
-                refresh_pause_label(&app_clone, &state);
+                refresh_pause_label(&state);
             }
         })
         .tooltip("PhoneMic")
@@ -84,10 +90,16 @@ fn handle_menu_event(app: &AppHandle, state: &Arc<DesktopState>, id: &str) {
     }
 }
 
-fn refresh_pause_label(_app: &AppHandle, _state: &Arc<DesktopState>) {
-    // tauri 2.x 的 MenuItem.set_text 在多平台上行为各异；当前 MVP 通过
-    // `phonemic://inject-paused-changed` 事件让前端 / 下次菜单展开自行
-    // 决定文案。真实 label 切换将在任务 10.6 集成测试中补齐。
+/// 根据当前暂停状态更新托盘菜单项的文字。
+/// 使用 [`MenuItem::set_text`] 动态修改菜单项，无需重建整个菜单。
+fn refresh_pause_label(state: &Arc<DesktopState>) {
+    let paused = state.config().input.paused;
+    let label = if paused { "Resume injection" } else { "Pause injection" };
+    if let Some(ref item) = *PAUSE_MENU_ITEM.lock().unwrap() {
+        if let Err(e) = item.set_text(label) {
+            tracing::warn!(error = %e, "failed to update tray pause label");
+        }
+    }
 }
 
 #[cfg(test)]

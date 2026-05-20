@@ -2993,6 +2993,7 @@ dependencies = [
  "hex",
  "phonemic-app",
  "phonemic-core",
+ "phonemic-discovery",
  "phonemic-injector",
  "phonemic-protocol",
  "serde",

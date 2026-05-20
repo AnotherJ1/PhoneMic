@@ -81,3 +81,6 @@ coverage/
 .omc/*
 !.omc/handoffs/
 !.omc/plans/
+
+# Sisyphus 本地循环产物（不入库）
+.sisyphus/

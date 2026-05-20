@@ -15,6 +15,7 @@ use phonemic_core::bridge_events::{BridgeEvent, BridgeEventTx, InjectErrorEvent}
 use phonemic_core::i18n::{decide_lang, Lang};
 use phonemic_core::lan_filter::NetworkInterface;
 use phonemic_core::lan_view::compute_lan_view;
+use phonemic_discovery::qr::qr_encode;
 use phonemic_core::pairing_service::PairingService;
 use phonemic_core::session::{DeviceFingerprint, SessionRegistry};
 use phonemic_protocol::{AppConfig, ErrorCode};
@@ -135,13 +136,23 @@ impl DesktopState {
         self.config.lock().unwrap().input.inject_delay_ms = delay_ms;
     }
 
+    /// 取首个 LAN IP 上的连接 URL，兜底 `127.0.0.1`。
+    fn primary_connect_url(&self) -> String {
+        let scheme = self.scheme.lock().unwrap().clone();
+        let port = *self.port.lock().unwrap();
+        let ips = self.ips.lock().unwrap();
+        let ip = ips.first().cloned().unwrap_or_else(|| "127.0.0.1".to_string());
+        format!("{scheme}://{ip}:{port}")
+    }
+
     /// 当前 Pairing_Code 视图。
     #[must_use]
     pub fn pairing_code_view(&self) -> PairingCodeView {
         let p = self.pairing.lock().unwrap();
         let code = p.current_pairing_code().as_str().to_string();
+        let url = self.primary_connect_url();
         PairingCodeView {
-            qr_svg: render_qr_svg(&code),
+            qr_svg: render_qr_svg(&url, &code),
             code,
         }
     }
@@ -152,8 +163,9 @@ impl DesktopState {
         let mut p = self.pairing.lock().unwrap();
         let new_code = p.rotate_code();
         let code = new_code.as_str().to_string();
+        let url = self.primary_connect_url();
         PairingCodeView {
-            qr_svg: render_qr_svg(&code),
+            qr_svg: render_qr_svg(&url, &code),
             code,
         }
     }
@@ -276,19 +288,24 @@ fn fingerprint_matches(fp: &DeviceFingerprint, expected_device_id: &str) -> bool
     actual == expected_device_id
 }
 
-fn render_qr_svg(text: &str) -> String {
-    // 占位 SVG：worker-backend 完成 discovery::qr 后由 phonemic-discovery 提供真实二维码。
-    format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\">\
-         <rect width=\"200\" height=\"200\" fill=\"#fff\"/>\
-         <text x=\"100\" y=\"100\" font-size=\"14\" text-anchor=\"middle\">{}</text>\
-         </svg>",
-        html_escape(text)
-    )
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+/// 使用 `phonemic-discovery::qr` 渲染真实二维码 SVG。
+///
+/// `connect_url` 例如 `http://192.168.1.5:18080`，`code` 为 8 位配对码。
+/// 生成失败时返回一个带错误提示的占位 SVG。
+fn render_qr_svg(connect_url: &str, code: &str) -> String {
+    match qr_encode(connect_url, code) {
+        Ok(svg) => svg,
+        Err(e) => {
+            tracing::warn!(error = %e, "QR encode failed, falling back to placeholder");
+            format!(
+                "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\">\
+                 <rect width=\"200\" height=\"200\" fill=\"#fff\"/>\
+                 <text x=\"100\" y=\"100\" font-size=\"12\" text-anchor=\"middle\" \
+                 fill=\"#999\">QR Error</text>\
+                 </svg>"
+            )
+        }
+    }
 }
 
 fn rfc3339_from_systemtime(t: SystemTime) -> String {

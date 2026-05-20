@@ -39,6 +39,7 @@ phonemic-protocol = { path = "../../../crates/phonemic-protocol" }
 phonemic-app      = { path = "../../../crates/phonemic-app" }
 # 直接引用核心 / 注入器以便构建 Tauri 命令
 phonemic-core     = { path = "../../../crates/phonemic-core" }
+phonemic-discovery = { path = "../../../crates/phonemic-discovery" }
 phonemic-injector = { path = "../../../crates/phonemic-injector" }
 
 tauri                        = { workspace = true }
