@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "./resources/web",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "pnpm --filter phonemic-mobile dev",
-    "beforeBuildCommand": "pnpm --filter phonemic-mobile build"
+    "beforeDevCommand": "pnpm -C ../../mobile dev",
+    "beforeBuildCommand": "pnpm -C ../../mobile build"
   },
 
   "app": {
