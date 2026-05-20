@@ -36,7 +36,7 @@
       "tooltip": "PhoneMic"
     },
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http: https:"
+      "csp": null
     }
   },
 
