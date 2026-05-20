@@ -93,20 +93,30 @@ pub fn run() {
 /// 启动入口由 worker-backend 在完成对应子任务后通过 `attach_runtime`
 /// 注入。
 async fn run_startup_sequence(app: tauri::AppHandle, state: Arc<DesktopState>) {
+    // 让前端 splash 视图先挂载并注册 phonemic://startup-stage 监听器。
+    // Tauri 的 emit 不是粘性事件——若在 listen 注册前发出会被丢弃，
+    // 用户看到的就是「卡在 Initialising」。500ms 经验值足够 Vue
+    // onMounted + 动态 import @tauri-apps/api/event 完成。
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
     let timeout = std::time::Duration::from_secs(5);
     let started = std::time::Instant::now();
 
     emit_startup_stage(&app, "web", "Starting Web Server", false);
     state.attach_runtime("http", 18080, vec!["127.0.0.1".to_string()]);
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     if started.elapsed() < timeout {
         emit_startup_stage(&app, "discovery", "Registering mDNS service", false);
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     }
     if started.elapsed() < timeout {
         emit_startup_stage(&app, "pairing", "Generating Pairing Code", false);
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     }
     if started.elapsed() < timeout {
         emit_startup_stage(&app, "injector", "Probing input injector", false);
         let _ = state.injector().current_focus_app();
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     }
     let stage = if started.elapsed() < timeout { "ready" } else { "error" };
     let message = if stage == "ready" {
