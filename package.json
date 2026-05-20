@@ -24,8 +24,6 @@
     "build": "pnpm -r --if-present build",
     "clean": "pnpm -r --if-present clean",
     "gen:ts-types": "node scripts/gen-ts-types.mjs",
-    "check:ts-types": "node scripts/gen-ts-types.mjs --check",
-    "gen:ts-types": "node scripts/gen-ts-types.mjs",
     "check:ts-types": "node scripts/gen-ts-types.mjs --check"
   },
   "devDependencies": {
