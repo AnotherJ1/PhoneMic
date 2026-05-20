@@ -11,12 +11,11 @@
   },
 
   "app": {
-    "withGlobalTauri": false,
+    "withGlobalTauri": true,
     "windows": [
       {
         "label": "main",
         "title": "PhoneMic",
-        "url": "index.html#/desktop/splash",
         "width": 880,
         "height": 600,
         "minWidth": 720,
