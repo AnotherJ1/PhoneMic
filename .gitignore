@@ -10,6 +10,11 @@
 /node_modules/
 /target/
 
+# 图标生成中间产物（源文件 logo.svg / render.js / winres.json 与最终 .syso 保留）
+cmd/phonemic/assets/ico/
+cmd/phonemic/assets/winres/icon.png
+.omc/
+
 # Go test/cover
 *.coverprofile
 *.test

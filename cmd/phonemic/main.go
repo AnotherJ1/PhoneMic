@@ -286,9 +286,12 @@ func startServer(state *appState) (int, error) {
 			switch msg.Type {
 			case "text":
 				if msg.Text != "" {
+					now := time.Now()
 					inject.write(msg.Text)
 					// 注入后追加一条文字记录，供窗口的文字记录区展示
-					state.addText(time.Now(), msg.Text)
+					state.addText(now, msg.Text)
+					// 同时落盘到历史日志文件，保留完整历史（窗口只留最近 50 条）
+					history.append(now, msg.Text)
 				}
 			case "reset":
 				// 新一段录音开始：清空补空格状态，避免与上段黏连
@@ -426,6 +429,9 @@ func (s *appState) connectURL() string {
 
 func main() {
 	log.SetOutput(os.Stdout)
+
+	// 初始化历史日志文件（落盘完整历史；失败只 warning，不影响主流程）。
+	history.init()
 
 	state := &appState{
 		pairCode: genPairCode(),

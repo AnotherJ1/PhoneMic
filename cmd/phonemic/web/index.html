@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <meta name="theme-color" content="#0ea5e9" />
   <title>PhoneMic</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="favicon-180.png" />
   <style>
     :root { color-scheme: light dark; }
     *{box-sizing:border-box} html,body{margin:0;padding:0}
@@ -14,6 +17,8 @@
       background: #0f172a; color:#e2e8f0;
     }
     header{padding:16px 20px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between}
+    header .brand{display:flex;align-items:center;gap:9px}
+    header .brand .logo{flex:none;display:block}
     header h1{font-size:18px;margin:0;letter-spacing:.5px}
     header .status{font-size:12px;padding:4px 10px;border-radius:999px;background:#1e293b}
     header .status.ok{background:#065f46}
@@ -54,7 +59,22 @@
 </head>
 <body>
   <header>
-    <h1>PhoneMic</h1>
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 256 256" width="28" height="28" aria-hidden="true">
+        <rect x="78" y="40" width="100" height="176" rx="22" fill="none" stroke="#38bdf8" stroke-width="9"/>
+        <rect x="113" y="56" width="30" height="6" rx="3" fill="#0ea5e9" opacity=".55"/>
+        <circle cx="128" cy="198" r="6" fill="#0ea5e9" opacity=".55"/>
+        <rect x="113" y="84" width="30" height="56" rx="15" fill="#0ea5e9"/>
+        <path d="M101 126a27 27 0 0 0 54 0" fill="none" stroke="#0ea5e9" stroke-width="8" stroke-linecap="round"/>
+        <rect x="124" y="150" width="8" height="20" rx="4" fill="#0ea5e9"/>
+        <rect x="112" y="168" width="32" height="8" rx="4" fill="#0ea5e9"/>
+        <g fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round">
+          <path d="M188 96a26 26 0 0 1 0 64"/>
+          <path d="M206 80a48 48 0 0 1 0 96" opacity=".6"/>
+        </g>
+      </svg>
+      <h1>PhoneMic</h1>
+    </div>
     <span id="status" class="status">连接中…</span>
   </header>
 

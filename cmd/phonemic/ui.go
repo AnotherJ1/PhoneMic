@@ -16,12 +16,16 @@ import (
 	"image/color"
 	"log"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"gioui.org/app"
 	"gioui.org/font"
 	"gioui.org/font/gofont"
+	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -61,6 +65,9 @@ func runUI(state *appState) {
 			app.Size(unit.Dp(460), unit.Dp(640)),
 			app.MinSize(unit.Dp(420), unit.Dp(560)),
 		)
+		// 打开时在当前显示器居中（Windows/macOS/X11 支持；纯 Wayland 由合成器
+		// 决定窗口位置，此调用被忽略，不影响其余功能）。
+		w.Perform(system.ActionCenter)
 		// 定时触发重绘，让连接数 / 文字记录跟上后台变化。
 		go func() {
 			t := time.NewTicker(uiRefreshInterval)
@@ -80,10 +87,12 @@ func runUI(state *appState) {
 
 // uiState 持有 gioui widget 与跨帧缓存（二维码图）。
 type uiState struct {
-	th        *material.Theme
-	copyBtn   widget.Clickable
-	rotateBtn widget.Clickable
-	list      widget.List
+	th         *material.Theme
+	copyBtn    widget.Clickable
+	rotateBtn  widget.Clickable
+	copyLogBtn widget.Clickable // 复制全部历史消息到剪贴板
+	openLogBtn widget.Clickable // 用系统默认程序打开历史日志文件
+	list       widget.List
 
 	// 二维码缓存：仅当 URL 变化时重新编码
 	qrURL string
@@ -142,6 +151,20 @@ func (u *uiState) layout(gtx layout.Context, state *appState) layout.Dimensions 
 	}
 	if u.rotateBtn.Clicked(gtx) {
 		state.rotateCode()
+	}
+	if u.copyLogBtn.Clicked(gtx) {
+		// 复制窗口内全部历史消息（最近 50 条，新的在前）到剪贴板
+		if text := formatRecords(state.recentTexts()); text != "" {
+			if err := clipboard.WriteAll(text); err != nil {
+				log.Printf("[ui] copy history failed: %v", err)
+			} else {
+				log.Printf("[ui] copied %d history lines", len(state.recentTexts()))
+			}
+		}
+	}
+	if u.openLogBtn.Clicked(gtx) {
+		// 用系统默认程序打开完整历史日志文件
+		openPath(historyLogPath())
 	}
 
 	// ---- 读取本帧快照（单向只读）----
@@ -299,15 +322,28 @@ func (u *uiState) layoutQR(gtx layout.Context, url string) layout.Dimensions {
 	return img.Layout(gtx)
 }
 
-// layoutRecordsSection 文字记录卡：标题 + 列表
+// layoutRecordsSection 文字记录卡：标题行（标题 + 复制全部 / 打开日志按钮）+ 列表
 func (u *uiState) layoutRecordsSection(gtx layout.Context, records []textRecord) layout.Dimensions {
 	th := u.th
 	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		// 标题行：左标题，右两个小按钮
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			l := material.Label(th, unit.Sp(15), "实时文字记录")
-			l.Color = colText
-			l.Font.Weight = font.Bold
-			return l.Layout(gtx)
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					l := material.Label(th, unit.Sp(15), "实时文字记录")
+					l.Color = colText
+					l.Font.Weight = font.Bold
+					return l.Layout(gtx)
+				}),
+				layout.Flexed(1, layout.Spacer{}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return smallButton(gtx, th, &u.copyLogBtn, "复制全部", colCardAlt)
+				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return smallButton(gtx, th, &u.openLogBtn, "打开日志", colCardAlt)
+				}),
+			)
 		}),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
@@ -390,4 +426,49 @@ func drawDot(gtx layout.Context, c color.NRGBA, d int) layout.Dimensions {
 	paint.ColorOp{Color: c}.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 	return layout.Dimensions{Size: image.Pt(size, size)}
+}
+
+// smallButton 画一个紧凑的次要按钮（用于文字记录卡标题行）。
+func smallButton(gtx layout.Context, th *material.Theme, btn *widget.Clickable, label string, bg color.NRGBA) layout.Dimensions {
+	b := material.Button(th, btn, label)
+	b.Background = bg
+	b.Color = colText
+	b.CornerRadius = unit.Dp(8)
+	b.TextSize = unit.Sp(12)
+	b.Inset = layout.Inset{Top: unit.Dp(6), Bottom: unit.Dp(6), Left: unit.Dp(12), Right: unit.Dp(12)}
+	return b.Layout(gtx)
+}
+
+// formatRecords 把文字记录拼成可复制的多行文本：每行 "时间戳<Tab>文本"。
+func formatRecords(records []textRecord) string {
+	if len(records) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for _, r := range records {
+		sb.WriteString(r.t.Format("15:04:05"))
+		sb.WriteByte('\t')
+		sb.WriteString(r.text)
+		sb.WriteByte('\n')
+	}
+	return sb.String()
+}
+
+// openPath 用系统默认程序打开文件 / 文件夹。失败只记 warning。
+func openPath(target string) {
+	if target == "" {
+		return
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", target)
+	case "darwin":
+		cmd = exec.Command("open", target)
+	default:
+		cmd = exec.Command("xdg-open", target)
+	}
+	if err := cmd.Start(); err != nil {
+		log.Printf("[ui] open %s failed: %v", target, err)
+	}
 }
