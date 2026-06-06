@@ -1,0 +1,37 @@
+# Go 编译产物
+# 注意：用精确文件名而非 **/phonemic，后者会把 cmd/phonemic/ 整个目录
+# （含 cert.go 等源码）误判为忽略目标。
+**/phonemic.exe
+/cmd/phonemic/phonemic
+**/dist/
+
+# 废弃残留与依赖目录（不进版本库）
+/apps/
+/node_modules/
+/target/
+
+# Go test/cover
+*.coverprofile
+*.test
+
+# 操作系统
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 机密
+.env
+.env.*
+!.env.example
+secrets/
+
+# OMC / Claude Code 会话产物
+.claude/
+.omc/
+.sisyphus/

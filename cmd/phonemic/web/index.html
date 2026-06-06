@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <meta name="theme-color" content="#0ea5e9" />
+  <title>PhoneMic</title>
+  <style>
+    :root { color-scheme: light dark; }
+    *{box-sizing:border-box} html,body{margin:0;padding:0}
+    body{
+      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      min-height: 100dvh; display:flex; flex-direction:column;
+      background: #0f172a; color:#e2e8f0;
+    }
+    header{padding:16px 20px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between}
+    header h1{font-size:18px;margin:0;letter-spacing:.5px}
+    header .status{font-size:12px;padding:4px 10px;border-radius:999px;background:#1e293b}
+    header .status.ok{background:#065f46}
+    header .status.err{background:#7f1d1d}
+    main{flex:1;padding:20px;display:flex;flex-direction:column;gap:16px}
+    .live{
+      min-height:120px;padding:14px;border-radius:12px;background:#1e293b;
+      font-size:18px;line-height:1.5;white-space:pre-wrap;word-break:break-word
+    }
+    .live .interim{color:#94a3b8}
+    button{
+      appearance:none;border:0;border-radius:14px;padding:18px;font-size:18px;font-weight:600;
+      background:#0ea5e9;color:white;width:100%;
+      transition:transform .08s ease, background .2s ease;
+    }
+    button:active{transform:scale(.98)}
+    button:disabled{background:#334155;color:#64748b}
+    button.recording{background:#ef4444}
+    button.secondary{background:#334155}
+    button.secondary:active{transform:scale(.98)}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .pill{padding:10px 14px;border-radius:999px;background:#1e293b;font-size:13px}
+    .pill.tap{cursor:pointer;user-select:none}
+    .pill.tap:active{background:#334155}
+    .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;margin-left:auto}
+    .toggle input{width:18px;height:18px;accent-color:#0ea5e9}
+    .editbox{
+      width:100%;min-height:60px;padding:12px;border-radius:12px;border:1px solid #334155;
+      background:#0b1120;color:#e2e8f0;font-size:16px;line-height:1.5;resize:vertical;font-family:inherit
+    }
+    .btnrow{display:flex;gap:8px}
+    .btnrow button{flex:1}
+    .hidden{display:none}
+    .log{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#64748b;max-height:120px;overflow:auto;padding:8px;background:#0b1120;border-radius:8px}
+    footer{padding:12px 20px;border-top:1px solid #1e293b;font-size:11px;color:#64748b;display:flex;justify-content:space-between}
+    .err{color:#fca5a5}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PhoneMic</h1>
+    <span id="status" class="status">连接中…</span>
+  </header>
+
+  <main>
+    <div class="row">
+      <span class="pill" id="pair">配对中…</span>
+      <span class="pill tap" id="lang" title="点击切换语言">zh-CN</span>
+      <label class="toggle"><input type="checkbox" id="editMode" checked>编辑后发送</label>
+    </div>
+
+    <div class="row">
+      <label class="toggle" style="margin-left:0"><input type="checkbox" id="contMode">连续模式（点一下开始/停止）</label>
+    </div>
+
+    <div class="live" id="live"><span class="interim">按住下面的按钮开始说话</span></div>
+
+    <!-- 编辑后发送模式下显示：可编辑识别结果再手动发送 -->
+    <textarea class="editbox hidden" id="edit" placeholder="识别结果会出现在这里，可修改后点发送"></textarea>
+    <div class="btnrow hidden" id="editBtns">
+      <button class="secondary" id="clearBtn">清空</button>
+      <button id="sendBtn">发送到电脑</button>
+    </div>
+
+    <button id="btn" disabled>按住说话</button>
+
+    <div class="log" id="log"></div>
+  </main>
+
+  <footer>
+    <span>PhoneMic v0.1</span>
+    <span id="ver">—</span>
+  </footer>
+
+<script>
+'use strict';
+// ---------- DOM ----------
+const $ = id => document.getElementById(id);
+const elStatus = $('status'), elLive = $('live'), elBtn = $('btn'),
+      elLog = $('log'), elPair = $('pair'), elLang = $('lang'), elVer = $('ver'),
+      elEditMode = $('editMode'), elContMode = $('contMode'),
+      elEdit = $('edit'), elEditBtns = $('editBtns'),
+      elSendBtn = $('sendBtn'), elClearBtn = $('clearBtn');
+
+// 支持的识别语言，点击 pill 循环切换
+const LANGS = ['zh-CN', 'en-US'];
+
+function log(...a){
+  const line = a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ');
+  console.log('[pm]', line);
+  elLog.textContent = (line + '\n' + elLog.textContent).slice(0, 4000);
+}
+
+function setStatus(text, kind) {
+  elStatus.textContent = text;
+  elStatus.className = 'status ' + (kind || '');
+}
+
+// ---------- pair code from URL ----------
+const url = new URL(location.href);
+const pairCode = url.searchParams.get('code') || '';
+elPair.textContent = pairCode ? '配对码 ' + pairCode : '⚠ 缺少配对码';
+
+// ---------- WebSocket ----------
+let ws = null, wsReady = false, heartbeat = null;
+function wsConnect() {
+  if (!pairCode) { setStatus('缺少配对码', 'err'); return; }
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const u = `${proto}//${location.host}/ws?code=${encodeURIComponent(pairCode)}`;
+  log('ws connect', u);
+  ws = new WebSocket(u);
+  ws.onopen    = () => {
+    wsReady = true; setStatus('已连接', 'ok'); elBtn.disabled = false;
+    // 心跳保活：每 15s 发一次 ping，防手机切后台 / 中间设备掐空闲连接
+    clearInterval(heartbeat);
+    heartbeat = setInterval(() => { if (wsReady) ws.send(JSON.stringify({ type: 'ping' })); }, 15000);
+  };
+  ws.onclose   = () => {
+    wsReady = false; setStatus('断开，重连中', 'err');
+    // 断开时若仍在录音，先停掉再禁用按钮，避免识别器在后台空跑
+    if (typeof recording !== 'undefined' && recording) endRecording();
+    elBtn.disabled = true;
+    clearInterval(heartbeat);
+    setTimeout(wsConnect, 1500);
+  };
+  ws.onerror   = e => log('ws error', String(e.message || e.type || e));
+  ws.onmessage = e => log('ws msg', e.data);
+}
+
+function send(text){
+  if (!wsReady) return;
+  ws.send(JSON.stringify({ type: 'text', text }));
+}
+
+// 通知桌面端：新一段录音开始，清空补空格状态
+function sendReset(){
+  if (!wsReady) return;
+  ws.send(JSON.stringify({ type: 'reset' }));
+}
+
+// ---------- bootstrap /info ----------
+fetch('/info').then(r=>r.json()).then(j=>{
+  elVer.textContent = 'v' + j.version;
+  log('info', j);
+}).catch(e => log('info error', e));
+
+wsConnect();
+
+// ---------- 安全上下文检查 ----------
+// Web Speech API 只在安全上下文（https / localhost）可用。http://IP 必拒麦克风。
+// 提前拦截，给出可操作提示，而不是让用户白按一通看 not-allowed。
+const httpsURL = 'https://' + location.host + location.pathname + location.search;
+if (!window.isSecureContext) {
+  setStatus('需用 https:// 打开', 'err');
+  elLive.innerHTML = '<span class="err">当前用 http 打开，浏览器禁止麦克风。<br>' +
+    '请改用：<br><a style="color:#7dd3fc;word-break:break-all" href="' + httpsURL + '">' + httpsURL + '</a><br>' +
+    '（会提示证书不安全，点"高级 → 继续前往"即可）</span>';
+}
+
+// ---------- Web Speech API ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) {
+  setStatus('当前浏览器不支持语音识别', 'err');
+  elLive.innerHTML = '<span class="err">请用 Chrome / Edge / Safari 打开</span>';
+}
+
+// 录音状态机：
+//   recording  —— 当前是否处于"应该在录音"的逻辑状态（用户意图）
+//   manualStop —— 标记本次 onend 是用户主动停止，区别于浏览器静音自动停
+//   restarting —— 防止 onend 自动重启与新一轮 start 叠加
+let rec = null, finalBuf = '', recording = false, manualStop = false, restartTimer = null;
+
+// 编辑模式：识别结果只累积到 finalBuf，不立即发；非编辑模式：实时发
+function emitFinal(text){
+  finalBuf += text;
+  if (elEditMode.checked) {
+    elEdit.value = finalBuf; // 进编辑框，等用户手动发
+  } else {
+    send(text);              // 实时发到电脑
+  }
+}
+
+function startRec(){
+  if (!SR) return;
+  // 复用一个识别器实例可能残留旧状态，每段新建更干净
+  rec = new SR();
+  rec.lang = elLang.textContent;
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.onresult = ev => {
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) emitFinal(r[0].transcript);
+      else           interim += r[0].transcript;
+    }
+    elLive.innerHTML = '<span>' + escapeHtml(finalBuf) + '</span><span class="interim">' + escapeHtml(interim) + '</span>';
+  };
+  rec.onerror = e => {
+    log('sr error', e.error);
+    // 致命错误（权限/非安全上下文）：重启再多次也没用，直接停录音并阻断自动重启
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      recording = false;
+      manualStop = true;
+      if (location.protocol !== 'https:') {
+        setStatus('需用 https:// 打开才能用麦克风', 'err');
+        elLive.innerHTML = '<span class="err">当前是 http，浏览器禁止麦克风。<br>请在地址栏改成 https:// 重新打开。</span>';
+      } else {
+        setStatus('麦克风被拒绝，请在浏览器允许', 'err');
+      }
+      syncBtn();
+      return;
+    }
+    // no-speech / aborted 是良性的（静音或主动停），不提示；其余给用户反馈
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      setStatus('识别错误: ' + e.error, 'err');
+    }
+  };
+  rec.onend = () => {
+    log('sr end');
+    // 仅当：仍想录音 + 不是用户主动停 + 连续模式 时才自动重启。
+    // 延迟重启避开 Android Chrome 在 onend 内立即 start 抛 InvalidStateError。
+    if (recording && !manualStop && elContMode.checked) {
+      clearTimeout(restartTimer);
+      restartTimer = setTimeout(() => {
+        if (recording && !manualStop) {
+          try { startRec(); log('sr auto-restart'); }
+          catch(e){ log('sr restart failed', e.message); }
+        }
+      }, 250);
+    }
+  };
+  try { rec.start(); log('sr start'); }
+  catch(e){ log('sr start failed', e.message); recording = false; syncBtn(); }
+}
+
+function stopRec(){
+  clearTimeout(restartTimer);
+  if (rec){
+    try { rec.onend = null; rec.stop(); } catch(e){} // 先摘掉 onend，杜绝重启
+    rec = null;
+    log('sr stop');
+  }
+}
+function escapeHtml(s){ return s.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+// 按钮外观随 recording / 模式同步，避免多处散写文案
+function syncBtn(){
+  if (recording){
+    elBtn.classList.add('recording');
+    elBtn.textContent = elContMode.checked ? '停止' : '松开停止';
+  } else {
+    elBtn.classList.remove('recording');
+    elBtn.textContent = elContMode.checked ? '开始说话' : '按住说话';
+  }
+}
+
+// 开始一段录音
+function beginRecording(){
+  if (elBtn.disabled || recording) return;
+  if (!window.isSecureContext){ // 非 https 直接拦，避免触发 not-allowed 死循环
+    setStatus('需用 https:// 打开', 'err');
+    return;
+  }
+  recording = true;
+  manualStop = false;
+  // 实时模式才清空 finalBuf；编辑模式保留已有文本，便于多段口述后统一发送
+  if (!elEditMode.checked){ finalBuf = ''; sendReset(); }
+  syncBtn();
+  startRec();
+}
+function endRecording(){
+  if (!recording) return;
+  recording = false;
+  manualStop = true; // 标记主动停，阻断 onend 自动重启
+  syncBtn();
+  stopRec();
+}
+
+// ---------- 按钮：按住说话 / 连续模式点击切换 ----------
+elBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (elContMode.checked) {
+    recording ? endRecording() : beginRecording(); // 连续模式：点击切换
+  } else {
+    beginRecording();                                // 按住模式：按下开始
+  }
+});
+// 按住模式：抬手 / 取消才停。pointerleave 不再停止——按住时手指轻微滑动
+// 会触发 leave，会导致频繁误停。pointerup 在按钮外抬手由 pointercancel 兜底。
+const releaseStop = () => { if (!elContMode.checked) endRecording(); };
+elBtn.addEventListener('pointerup', releaseStop);
+elBtn.addEventListener('pointercancel', releaseStop);
+
+// ---------- 语言切换：点 pill 循环 ----------
+elLang.addEventListener('click', () => {
+  const i = LANGS.indexOf(elLang.textContent);
+  elLang.textContent = LANGS[(i + 1) % LANGS.length];
+  log('lang ->', elLang.textContent);
+});
+
+// ---------- 编辑模式 UI 切换 ----------
+function syncEditUI(){
+  const on = elEditMode.checked;
+  elEdit.classList.toggle('hidden', !on);
+  elEditBtns.classList.toggle('hidden', !on);
+}
+elEditMode.addEventListener('change', syncEditUI);
+syncEditUI(); // 默认勾选"编辑后发送",启动时同步一次 UI
+
+// ---------- 连续模式：切换时若在录音先停，再同步按钮文案 ----------
+elContMode.addEventListener('change', () => {
+  if (recording) endRecording();
+  syncBtn();
+});
+
+// ---------- 编辑模式下：发送 / 清空 ----------
+elSendBtn.addEventListener('click', () => {
+  const text = elEdit.value.trim();
+  if (!text) return;
+  sendReset();   // 整段独立发送，前后不与他段补空格
+  send(text);
+  elEdit.value = '';
+  finalBuf = '';
+  log('manual send', text);
+});
+elClearBtn.addEventListener('click', () => { elEdit.value = ''; finalBuf = ''; });
+</script>
+</body>
+</html>

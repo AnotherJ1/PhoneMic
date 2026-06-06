@@ -1,0 +1,105 @@
+# 跨平台构建 / 发布 PhoneMic。
+#
+# 为什么需要 CI 矩阵而不能一台机交叉编译：
+#   gioui 仅 Windows 后端是纯 Go（Direct3D），macOS（Metal/Cocoa）与
+#   Linux（Vulkan/X11/Wayland）后端都依赖各自系统的 C 库，必须 CGO=1，
+#   且只能在对应原生平台编译。keybd_event 在 macOS 同样需要 Apple 框架。
+#   因此三平台各用一个原生 runner 自行编译。
+#
+# 触发：
+#   - 推送 v* tag    → 编译三平台并上传到 GitHub Release
+#   - 手动 dispatch  → 仅编译并存为 artifact（便于验证构建）
+#   - push / PR      → 仅编译 Linux（最快的烟囱测试，省额度）
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# 模块在子目录，所有 go 命令都在这里执行
+defaults:
+  run:
+    working-directory: cmd/phonemic
+
+permissions:
+  contents: write # 上传 Release 资产需要
+
+jobs:
+  build:
+    name: build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-amd64
+            os: windows-latest
+            goos: windows
+            goarch: amd64
+            cgo: "0"
+            # Windows 用 GUI 子系统去掉控制台黑窗
+            ldflags: "-s -w -H windowsgui"
+            out: phonemic-windows-amd64.exe
+          - name: linux-amd64
+            os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            cgo: "1"
+            ldflags: "-s -w"
+            out: phonemic-linux-amd64
+          - name: darwin-amd64
+            os: macos-13 # Intel runner
+            goos: darwin
+            goarch: amd64
+            cgo: "1"
+            ldflags: "-s -w"
+            out: phonemic-darwin-amd64
+          - name: darwin-arm64
+            os: macos-14 # Apple Silicon runner
+            goos: darwin
+            goarch: arm64
+            cgo: "1"
+            ldflags: "-s -w"
+            out: phonemic-darwin-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: cmd/phonemic/go.sum
+
+      # gioui 在 Linux 需要的系统开发库（来自 gioui.org/doc/install/linux）
+      - name: Install gioui Linux deps
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc pkg-config \
+            libwayland-dev libx11-dev libx11-xcb-dev libxkbcommon-x11-dev \
+            libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev libvulkan-dev
+        working-directory: . # apt 与子目录无关
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: go build -trimpath -ldflags "${{ matrix.ldflags }}" -o "dist/${{ matrix.out }}" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: cmd/phonemic/dist/${{ matrix.out }}
+          if-no-files-found: error
+
+      # 仅在打 tag 时把产物挂到 Release
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: cmd/phonemic/dist/${{ matrix.out }}

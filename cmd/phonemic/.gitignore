@@ -1,0 +1,7 @@
+# Go 编译产物
+phonemic.exe
+phonemic
+dist/
+
+# go test/cover
+*.coverprofile
