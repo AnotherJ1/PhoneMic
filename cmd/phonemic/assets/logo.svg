@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PhoneMic logo: 手机轮廓内嵌话筒。sky 蓝主色 #0ea5e9，深底圆角，跨软件/网页统一。 -->
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 圆角方底 -->
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#bg)"/>
+
+  <!-- 手机轮廓 -->
+  <rect x="78" y="40" width="100" height="176" rx="22"
+        fill="none" stroke="url(#accent)" stroke-width="9"/>
+  <!-- 手机听筒条 -->
+  <rect x="113" y="56" width="30" height="6" rx="3" fill="#0ea5e9" opacity="0.55"/>
+  <!-- 手机 home 圆点 -->
+  <circle cx="128" cy="198" r="6" fill="#0ea5e9" opacity="0.55"/>
+
+  <!-- 话筒：胶囊头 + 支架 + 底座 -->
+  <g fill="url(#accent)">
+    <!-- 话筒头（胶囊） -->
+    <rect x="113" y="84" width="30" height="56" rx="15"/>
+  </g>
+  <!-- 话筒拾音弧（支架） -->
+  <path d="M101 126 a27 27 0 0 0 54 0"
+        fill="none" stroke="url(#accent)" stroke-width="8" stroke-linecap="round"/>
+  <!-- 话筒杆 -->
+  <rect x="124" y="150" width="8" height="20" rx="4" fill="url(#accent)"/>
+  <!-- 话筒底座 -->
+  <rect x="112" y="168" width="32" height="8" rx="4" fill="url(#accent)"/>
+
+  <!-- 声波弧（右上，呼应"发声/识别"） -->
+  <g fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round" opacity="0.9">
+    <path d="M188 96 a26 26 0 0 1 0 64"/>
+    <path d="M206 80 a48 48 0 0 1 0 96" opacity="0.6"/>
+  </g>
+</svg>

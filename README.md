@@ -1,123 +1,234 @@
+<div align="center">
+
+<img src="cmd/phonemic/assets/logo.svg" width="96" height="96" alt="PhoneMic logo" />
+
 # PhoneMic
 
-把手机当成无线麦克风给电脑打字。手机录音 → 浏览器自带的 Web Speech API 识别成文字 → WebSocket 推回桌面 → 桌面用剪贴板 + Ctrl/Cmd+V 把文字打到当前光标处。
+**Turn your phone into a wireless microphone that types on your computer.**
 
-- 单 binary，~7 MB（release）
-- 桌面零 UI，只有系统托盘菜单
-- 手机零安装，浏览器打开 URL 就能用
-- 中文/英文都能打（Web Speech API 支持的语言均可）
+**English** · [简体中文](README.zh-CN.md)
 
-## 快速开始
+</div>
+
+Speak into your phone → the browser's built-in Web Speech API transcribes it →
+the text is pushed to your desktop over WebSocket → the desktop pastes it into
+whatever window currently has focus.
+
+- **Single binary** — no installer, no runtime, no frontend build chain.
+- **Phone needs nothing** — just open a URL in the browser. No app to install.
+- **Desktop GUI window** — embedded QR code, live connection status, and a
+  running text log, all in one window.
+- **Chinese & English** (and any language the Web Speech API supports).
+
+---
+
+## Screenshots
+
+| Desktop window | Phone web page |
+|:---:|:---:|
+| <img src="docs/images/app-window.png" width="320" alt="PhoneMic desktop window" /> | <img src="docs/images/web-page.png" width="240" alt="PhoneMic phone web page" /> |
+| QR code · connection status · pair code · recent-text log | Hold-to-talk · edit-before-send · language switch |
+
+---
+
+## How it works
+
+```
+[ Phone browser ]
+    │  hold to record → MediaStream
+    │  Web Speech API recognizes → final text
+    ▼
+[ WebSocket  /ws?code=XXXXXX ]   ← pair-code check
+    │
+[ Desktop (Go + gioui) ]
+    │  write to clipboard   (atotto/clipboard)
+    │  press Ctrl+V / Cmd+V (micmonay/keybd_event)
+    ▼
+[ The input field that currently has focus ]
+```
+
+The desktop and phone talk over **HTTPS + WebSocket** on your local Wi-Fi.
+HTTPS is mandatory because the Web Speech API only runs in a *secure context*.
+
+---
+
+## Quick start (run from source)
+
+You need **Go 1.25+**. No CGO toolchain is required on Windows.
 
 ```bash
-cd cmd/phonemic
+git clone https://github.com/AnotherJ1/PhoneMic.git
+cd PhoneMic/cmd/phonemic
+go mod tidy
 go run .
 ```
 
-控制台会打印一行：
+A **PhoneMic window** opens (centered on screen). It shows:
 
-```
-[main] listening on http://192.168.x.x:PORT  pair=ABCXYZ
-```
-
-右下角任务栏托盘出现 PhoneMic 蓝色图标。右键看到：
-
-| 菜单项 | 行为 |
+| Element | What it does |
 |---|---|
-| `Connect URL: http://...` | 点击复制完整 URL（含配对码） |
-| `Pair code: ABCXYZ` | 点击复制配对码 |
-| `Show QR code…` | 用默认看图器打开二维码 PNG |
-| `Regenerate pair code` | 轮换配对码，所有现有连接被踢，必须用新码重连 |
-| `Quit` | 退出 |
+| **QR code** | Scan it with your phone to open the connection page |
+| **Connect URL** | `https://192.168.x.x:PORT/?code=ABCXYZ` — click **Copy URL** to copy |
+| **Pair code** | 6 chars — click **Rotate** to regenerate (kicks all current phones) |
+| **Status pill** | Top-right; turns green and shows the count when phones connect |
+| **Recent text** | The latest injected texts with timestamps (newest first, max 50) |
 
-手机用同一 Wi-Fi 浏览器（**Chrome / Edge / Safari**，Firefox 不支持 Web Speech API）打开复制的 URL → 浏览器请求麦克风权限点允许 → 按住"按住说话"→ 松开停止。识别出的文字会通过 WebSocket 推回桌面，由桌面端写剪贴板 + 模拟 Ctrl+V 打到当前焦点输入框。
+On your phone (same Wi-Fi):
 
-### 手机端选项
+1. Scan the QR code, or open the copied URL.
+2. The browser warns the connection is "not secure" — this is expected for a
+   self-signed local certificate. Tap **Advanced → Proceed**.
+3. Hold **Hold to talk** and speak. By default **Edit before send** is on, so
+   the transcript lands in an editable box first; review it, then tap **Send**.
+4. The text appears at your computer's cursor.
 
-| 选项 | 说明 |
-|---|---|
-| 语言 pill | 点击在 `zh-CN` / `en-US` 之间循环切换 |
-| 连续模式 | 勾选后改为"点一下开始 / 点一下停止"，长文本不用一直按住；浏览器静音自动停止时会自动重启录音 |
-| 编辑后发送 | 勾选后识别结果先进编辑框，可手动修改后点"发送到电脑"，避免识别错的内容直接打到电脑 |
+> Closing the window quits the whole program (the background HTTPS server stops with it).
 
-## Release 构建
+---
+
+## Building a release binary
+
+The compiled binary is self-contained (web assets, TLS cert logic, and the
+window icon are all embedded) and runs on any same-architecture machine by
+double-clicking.
+
+### Current platform (uses `build.sh`)
 
 ```bash
 bash cmd/phonemic/build.sh
 ```
 
-输出到 `cmd/phonemic/dist/`，包含：
-- `phonemic-windows-amd64.exe`（GUI 子系统，无控制台窗口）
-- `phonemic-darwin-amd64`、`phonemic-darwin-arm64`
-- `phonemic-linux-amd64`
+It detects your OS and builds the right binary into `cmd/phonemic/dist/`.
 
-体积参考（release，未 UPX 压缩）：
+### Windows, by hand
 
-| 平台 | 体积 |
+```bash
+cd cmd/phonemic
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H windowsgui" -o phonemic.exe .
+```
+
+`-H windowsgui` removes the console window; `-s -w` strips debug info.
+Current Windows amd64 release is about **13 MB**.
+
+### All platforms at once (GitHub Actions)
+
+> ⚠️ You **cannot** cross-compile every platform from one machine. gioui's
+> Windows backend is pure Go (Direct3D), but its macOS (Metal/Cocoa) and Linux
+> (Vulkan/X11/Wayland) backends require **CGO and the matching native OS**.
+
+Push a `v*` tag and the CI matrix in
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds all four
+targets on their native runners and attaches them to a GitHub Release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+| Target | Runner | CGO |
+|---|---|---|
+| `windows-amd64` | `windows-latest` | off |
+| `linux-amd64` | `ubuntu-latest` (installs gioui deps) | on |
+| `darwin-amd64` | `macos-13` (Intel) | on |
+| `darwin-arm64` | `macos-14` (Apple Silicon) | on |
+
+---
+
+## Regenerating the logo / icons
+
+The logo source is [`cmd/phonemic/assets/logo.svg`](cmd/phonemic/assets/logo.svg).
+To regenerate web favicons and the embedded Windows icon:
+
+```bash
+cd cmd/phonemic/assets
+npm i sharp                       # one-time, for SVG → PNG
+node render.js                    # writes web favicons + ico/*.png
+cd winres && go-winres make --in winres.json --out ../../rsrc
+# → produces rsrc_windows_*.syso, auto-embedded on the next `go build`
+```
+
+gioui loads icon resource ID `1` from the executable, so the `.syso` gives the
+window and taskbar the PhoneMic icon automatically.
+
+---
+
+## Phone-side options
+
+| Option | Description |
 |---|---|
-| Windows amd64 | 7.4 MB |
-| macOS amd64 | ~7 MB |
-| macOS arm64 | ~7 MB |
-| Linux amd64 | ~7 MB |
+| **Language pill** | Tap to cycle `zh-CN` / `en-US` |
+| **Continuous mode** | Tap-to-start / tap-to-stop instead of hold; auto-restarts after silence |
+| **Edit before send** (default on) | Transcript goes to an editable box first; fix it, then **Send** |
 
-## 架构
+---
 
-```
-[手机浏览器]
-   |  按住录音 → MediaStream
-   |  Web Speech API 识别 → final text
-   v
-[WebSocket /ws?code=XXX]   ← 配对码校验
-   |
-[Go 桌面端]
-   |  写剪贴板（atotto/clipboard）
-   |  按 Ctrl+V / Cmd+V（micmonay/keybd_event）
-   v
-[当前焦点的输入框]
-```
+## Security model
 
-依赖包（全部纯 Go，**无 CGO**）：
+- Listens on `0.0.0.0:<random port>`; only an RFC1918 private IP
+  (192.168 / 10.x / 172.16–31) is shown in the connect URL.
+- `/ws` **requires** `?code=XXXXXX`; a mismatch returns HTTP 403.
+- The 6-char pair code is `[A-Z2-9]` (no `0/O/1/I`), generated with `crypto/rand`.
+- **Rotate** regenerates the code and force-closes every existing connection.
+- Self-signed HTTPS: the cert's SAN includes the LAN IP, `127.0.0.1`, and
+  `localhost`; it is cached and reused. A public CA cannot sign a LAN IP, so the
+  browser's "not secure" prompt is unavoidable — proceeding once is safe here.
 
-- `github.com/getlantern/systray` — 系统托盘
-- `github.com/gorilla/websocket` — WebSocket
-- `github.com/atotto/clipboard` — 剪贴板读写
-- `github.com/micmonay/keybd_event` — 键盘按键模拟
-- `github.com/skip2/go-qrcode` — 二维码
+---
 
-## 安全
+## Known limitations
 
-- 监听 `0.0.0.0:` 随机端口；菜单仅显示 RFC1918 私网 IP（192.168 / 10.x / 172.16-31）
-- `/ws` 必须带 `?code=XXX` 查询参数；`code` 不匹配返回 403
-- 配对码 6 位 [A-Z2-9]（去除 0/O/1/I），来自 `crypto/rand`
-- 通过 `Regenerate pair code` 菜单可随时轮换
+- **Web Speech API depends on Google's servers on Android Chrome.** It uploads
+  audio to Google for recognition, so if the network can't reach Google you get
+  `sr error network` and nothing is transcribed. iOS Safari uses Apple's engine
+  and is unaffected. Fully offline recognition would mean moving STT to the
+  desktop (e.g. whisper.cpp) — a separate effort.
+- **iOS Safari needs 14+** for `webkitSpeechRecognition`.
+- **Linux key injection needs uinput permission:**
+  `sudo usermod -aG input $USER`, then re-login.
+- **macOS prompts for Accessibility permission** on the first Cmd+V: allow
+  *phonemic* under System Settings → Privacy & Security → Accessibility.
+- The clipboard is used as the injection carrier, but the desktop restores your
+  original clipboard ~150 ms after pasting.
 
-## 已知限制
+---
 
-- **Web Speech API 在 iOS Safari 上需要 14+**；旧版 Safari 没有 `webkitSpeechRecognition`。
-- **Linux 上键盘模拟需要 uinput 权限**：把当前用户加入 `input` 组：`sudo usermod -aG input $USER` 后重登录。
-- **macOS 第一次按 Cmd+V 会弹"辅助功能"权限**：在系统设置 → 隐私与安全 → 辅助功能 中允许 phonemic。
-- **剪贴板**：注入用剪贴板做载体，但桌面端会在粘贴后 ~150ms 自动恢复用户原剪贴板内容，正常使用不会丢失。
+## Protocol reference
 
-## 协议
-
-WebSocket 消息（client → server）：
+WebSocket, client → server:
 
 ```json
-{ "type": "text", "text": "今天天气不错" }
+{ "type": "text", "text": "hello world" }
+{ "type": "reset" }
 { "type": "ping" }
 ```
 
-WebSocket 消息（server → client）：
+WebSocket, server → client:
 
 ```json
 { "type": "pong" }
 ```
 
-HTTP：
+HTTP:
 
-- `GET /` → 静态前端 `index.html`
-- `GET /info` → `{ code, port, ip, version }` JSON
-- `GET /ws?code=XXX` → WebSocket 升级，403 if code mismatch
+- `GET /` → static frontend (`index.html`)
+- `GET /info` → `{ code, port, ip, version }`
+- `GET /ws?code=XXXXXX` → WebSocket upgrade (403 on code mismatch)
+
+---
+
+## Tech stack
+
+Desktop is **pure Go**; on Windows the build needs **no CGO**.
+
+| Dependency | Role |
+|---|---|
+| `gioui.org` | Desktop GUI window (Direct3D / Metal / Vulkan) |
+| `github.com/gorilla/websocket` | WebSocket transport |
+| `github.com/atotto/clipboard` | Clipboard read/write |
+| `github.com/micmonay/keybd_event` | Keyboard (paste) simulation |
+| `github.com/skip2/go-qrcode` | QR code generation |
+
+---
 
 ## License
 
