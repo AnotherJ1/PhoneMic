@@ -1,6 +1,6 @@
 module phonemic
 
-go 1.22
+go 1.24.0
 
 require (
 	gioui.org v0.10.0
