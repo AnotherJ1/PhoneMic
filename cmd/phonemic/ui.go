@@ -91,8 +91,9 @@ type uiState struct {
 	copyBtn    widget.Clickable
 	rotateBtn  widget.Clickable
 	copyLogBtn widget.Clickable // 复制全部历史消息到剪贴板
-	openLogBtn widget.Clickable // 用系统默认程序打开历史日志文件
-	list       widget.List
+	openLogBtn    widget.Clickable // 用系统默认程序打开历史日志文件
+	copyRecordBtns []widget.Clickable // 逐条消息复制按钮
+	list          widget.List
 
 	// 二维码缓存：仅当 URL 变化时重新编码
 	qrURL string
@@ -165,6 +166,20 @@ func (u *uiState) layout(gtx layout.Context, state *appState) layout.Dimensions 
 	if u.openLogBtn.Clicked(gtx) {
 		// 用系统默认程序打开完整历史日志文件
 		openPath(historyLogPath())
+	}
+
+	// 监听逐条复制按钮点击
+	for i := range u.copyRecordBtns {
+		if u.copyRecordBtns[i].Clicked(gtx) {
+			recs := state.recentTexts()
+			if i < len(recs) {
+				if err := clipboard.WriteAll(recs[i].text); err != nil {
+					log.Printf("[ui] copy record %d failed: %v", i, err)
+				} else {
+					log.Printf("[ui] copied record %d", i)
+				}
+			}
+		}
 	}
 
 	// ---- 读取本帧快照（单向只读）----
@@ -360,6 +375,13 @@ func (u *uiState) layoutRecords(gtx layout.Context, records []textRecord) layout
 		l.Color = colFaint
 		return l.Layout(gtx)
 	}
+	// 确保逐条复制按钮数量与记录数一致
+	for len(u.copyRecordBtns) < len(records) {
+		u.copyRecordBtns = append(u.copyRecordBtns, widget.Clickable{})
+	}
+	for len(u.copyRecordBtns) > len(records) {
+		u.copyRecordBtns = u.copyRecordBtns[:len(records)]
+	}
 	return material.List(th, &u.list).Layout(gtx, len(records), func(gtx layout.Context, i int) layout.Dimensions {
 		rec := records[i]
 		return layout.Inset{Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
@@ -376,6 +398,10 @@ func (u *uiState) layoutRecords(gtx layout.Context, records []textRecord) layout
 						l := material.Label(th, unit.Sp(14), rec.text)
 						l.Color = colText
 						return l.Layout(gtx)
+					}),
+					layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return smallButton(gtx, th, &u.copyRecordBtns[i], "复制", colCard)
 					}),
 				)
 			})
