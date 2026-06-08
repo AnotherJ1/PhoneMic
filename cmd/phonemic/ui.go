@@ -95,10 +95,25 @@ type uiState struct {
 	copyRecordBtns []widget.Clickable // 逐条消息复制按钮
 	list          widget.List
 
+	// 复制成功后的视觉反馈：记录各复制按钮「最近一次成功复制」的时刻，
+	// 渲染时若距今 < copiedFeedbackDur 就把按钮文案临时换成「已复制」态。
+	// 不另开 ticker —— 复用既有 500ms 定时 Invalidate 让文案在 deadline 后自动恢复。
+	copyBtnCopiedAt    time.Time
+	copyLogBtnCopiedAt time.Time
+	copyRecordCopiedAt []time.Time // 与 copyRecordBtns 等长，逐条对应
+
 	// 二维码缓存：仅当 URL 变化时重新编码
 	qrURL string
 	qrOp  paint.ImageOp
 	qrOK  bool
+}
+
+// copiedFeedbackDur 是复制成功后按钮显示「已复制」态的时长（约 1.5s 后恢复原文案）。
+const copiedFeedbackDur = 1500 * time.Millisecond
+
+// isCopied 判断某复制时刻是否仍在反馈窗口内（用于渲染时切换按钮文案）。
+func isCopied(at time.Time) bool {
+	return !at.IsZero() && time.Since(at) < copiedFeedbackDur
 }
 
 func newUIState() *uiState {
@@ -148,6 +163,7 @@ func (u *uiState) layout(gtx layout.Context, state *appState) layout.Dimensions 
 			log.Printf("[ui] copy URL failed: %v", err)
 		} else {
 			log.Printf("[ui] copied URL %s", url)
+			u.copyBtnCopiedAt = time.Now() // 触发「已复制」态视觉反馈
 		}
 	}
 	if u.rotateBtn.Clicked(gtx) {
@@ -160,6 +176,7 @@ func (u *uiState) layout(gtx layout.Context, state *appState) layout.Dimensions 
 				log.Printf("[ui] copy history failed: %v", err)
 			} else {
 				log.Printf("[ui] copied %d history lines", len(state.recentTexts()))
+				u.copyLogBtnCopiedAt = time.Now() // 触发「已复制」态视觉反馈
 			}
 		}
 	}
@@ -177,6 +194,9 @@ func (u *uiState) layout(gtx layout.Context, state *appState) layout.Dimensions 
 					log.Printf("[ui] copy record %d failed: %v", i, err)
 				} else {
 					log.Printf("[ui] copied record %d", i)
+					if i < len(u.copyRecordCopiedAt) {
+						u.copyRecordCopiedAt[i] = time.Now() // 触发「已复制」态视觉反馈
+					}
 				}
 			}
 		}
@@ -286,7 +306,11 @@ func (u *uiState) layoutPairing(gtx layout.Context, url, code string) layout.Dim
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
 						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-							b := material.Button(th, &u.copyBtn, "复制地址")
+							label := "复制地址"
+							if isCopied(u.copyBtnCopiedAt) {
+								label = "已复制 ✓"
+							}
+							b := material.Button(th, &u.copyBtn, label)
 							b.Background = colAccent
 							b.Color = colWhite
 							b.CornerRadius = unit.Dp(10)
@@ -352,7 +376,11 @@ func (u *uiState) layoutRecordsSection(gtx layout.Context, records []textRecord)
 				}),
 				layout.Flexed(1, layout.Spacer{}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return smallButton(gtx, th, &u.copyLogBtn, "复制全部", colCardAlt)
+					label := "复制全部"
+					if isCopied(u.copyLogBtnCopiedAt) {
+						label = "已复制 ✓"
+					}
+					return smallButton(gtx, th, &u.copyLogBtn, label, colCardAlt)
 				}),
 				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
@@ -375,12 +403,14 @@ func (u *uiState) layoutRecords(gtx layout.Context, records []textRecord) layout
 		l.Color = colFaint
 		return l.Layout(gtx)
 	}
-	// 确保逐条复制按钮数量与记录数一致
+	// 确保逐条复制按钮数量与记录数一致；copyRecordCopiedAt 与其等长同步增减。
 	for len(u.copyRecordBtns) < len(records) {
 		u.copyRecordBtns = append(u.copyRecordBtns, widget.Clickable{})
+		u.copyRecordCopiedAt = append(u.copyRecordCopiedAt, time.Time{})
 	}
 	for len(u.copyRecordBtns) > len(records) {
 		u.copyRecordBtns = u.copyRecordBtns[:len(records)]
+		u.copyRecordCopiedAt = u.copyRecordCopiedAt[:len(records)]
 	}
 	return material.List(th, &u.list).Layout(gtx, len(records), func(gtx layout.Context, i int) layout.Dimensions {
 		rec := records[i]
@@ -401,7 +431,11 @@ func (u *uiState) layoutRecords(gtx layout.Context, records []textRecord) layout
 					}),
 					layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-						return smallButton(gtx, th, &u.copyRecordBtns[i], "复制", colCard)
+						label := "复制"
+						if i < len(u.copyRecordCopiedAt) && isCopied(u.copyRecordCopiedAt[i]) {
+							label = "✓"
+						}
+						return smallButton(gtx, th, &u.copyRecordBtns[i], label, colCard)
 					}),
 				)
 			})
