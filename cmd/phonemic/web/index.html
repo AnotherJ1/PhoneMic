@@ -55,6 +55,20 @@
     .log{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#64748b;max-height:120px;overflow:auto;padding:8px;background:#0b1120;border-radius:8px}
     footer{padding:12px 20px;border-top:1px solid #1e293b;font-size:11px;color:#64748b;display:flex;justify-content:space-between}
     .err{color:#fca5a5}
+    /* 发送历史区 */
+    .hist-head{display:flex;align-items:center;gap:8px}
+    .hist-head .title{font-size:15px;font-weight:600;color:#e2e8f0}
+    .hist{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow:auto}
+    .hist-item{
+      display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+      background:#0b1120;border:1px solid #1e293b
+    }
+    .hist-item .txt{flex:1;font-size:14px;line-height:1.4;word-break:break-word;color:#e2e8f0}
+    .hist-item .resend{
+      flex:none;width:auto;padding:8px 12px;font-size:13px;font-weight:600;border-radius:8px;
+      background:#334155;color:#e2e8f0
+    }
+    .hist-empty{font-size:13px;color:#64748b}
   </style>
 </head>
 <body>
@@ -100,6 +114,16 @@
 
     <button id="btn" disabled>按住说话</button>
 
+    <!-- 独立回车按钮：点击让电脑在当前焦点窗口按一次 Enter（发消息 / 换行 / 确认） -->
+    <button class="secondary" id="enterBtn" disabled>↵ 回车</button>
+
+    <!-- 发送历史：本机本次发送过的文本，存 localStorage，点「再发」填回编辑框 -->
+    <div class="hist-head">
+      <span class="title">发送历史</span>
+      <span class="pill tap" id="histClear" title="清空历史" style="margin-left:auto;font-size:12px">清空</span>
+    </div>
+    <div class="hist" id="hist"></div>
+
     <div class="log" id="log"></div>
   </main>
 
@@ -116,7 +140,9 @@ const elStatus = $('status'), elLive = $('live'), elBtn = $('btn'),
       elLog = $('log'), elPair = $('pair'), elLang = $('lang'), elVer = $('ver'),
       elEditMode = $('editMode'), elContMode = $('contMode'),
       elEdit = $('edit'), elEditBtns = $('editBtns'),
-      elSendBtn = $('sendBtn'), elClearBtn = $('clearBtn');
+      elSendBtn = $('sendBtn'), elClearBtn = $('clearBtn'),
+      elEnterBtn = $('enterBtn'),
+      elHist = $('hist'), elHistClear = $('histClear');
 
 // 支持的识别语言，点击 pill 循环切换
 const LANGS = ['zh-CN', 'en-US'];
@@ -126,6 +152,36 @@ function log(...a){
   console.log('[pm]', line);
   elLog.textContent = (line + '\n' + elLog.textContent).slice(0, 4000);
 }
+
+// ---------- 点击音效 ----------
+// 用 Web Audio API 合成短促「嘀」声，不嵌入任何音频文件（契合零资源、单文件的项目精神）。
+// 移动端浏览器要求 AudioContext 必须在用户手势中创建/恢复，否则静音；故首个手势时解锁。
+let audioCtx = null;
+function unlockAudio(){
+  if (audioCtx) { if (audioCtx.state === 'suspended') audioCtx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  try { audioCtx = new AC(); } catch(e){ log('audio init failed', e.message); }
+}
+// playClick 播放一声短「嘀」。freq 可区分不同动作（默认 880Hz）。
+function playClick(freq){
+  if (!audioCtx || audioCtx.state !== 'running') return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq || 880;
+  // 快速起音 + 指数衰减，约 90ms，干脆不刺耳
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.25, t + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.1);
+}
+// 首次任意指针/键盘交互时解锁音频
+['pointerdown','keydown'].forEach(ev =>
+  window.addEventListener(ev, unlockAudio, { once: false, passive: true }));
 
 function setStatus(text, kind) {
   elStatus.textContent = text;
@@ -146,7 +202,7 @@ function wsConnect() {
   log('ws connect', u);
   ws = new WebSocket(u);
   ws.onopen    = () => {
-    wsReady = true; setStatus('已连接', 'ok'); elBtn.disabled = false;
+    wsReady = true; setStatus('已连接', 'ok'); elBtn.disabled = false; elEnterBtn.disabled = false;
     // 心跳保活：每 15s 发一次 ping，防手机切后台 / 中间设备掐空闲连接
     clearInterval(heartbeat);
     heartbeat = setInterval(() => { if (wsReady) ws.send(JSON.stringify({ type: 'ping' })); }, 15000);
@@ -155,7 +211,7 @@ function wsConnect() {
     wsReady = false; setStatus('断开，重连中', 'err');
     // 断开时若仍在录音，先停掉再禁用按钮，避免识别器在后台空跑
     if (typeof recording !== 'undefined' && recording) endRecording();
-    elBtn.disabled = true;
+    elBtn.disabled = true; elEnterBtn.disabled = true;
     clearInterval(heartbeat);
     setTimeout(wsConnect, 1500);
   };
@@ -166,6 +222,8 @@ function wsConnect() {
 function send(text){
   if (!wsReady) return;
   ws.send(JSON.stringify({ type: 'text', text }));
+  // 记入本机发送历史（所有真正发到电脑的文本都经过这里）
+  pushHistory(text);
 }
 
 // 通知桌面端：新一段录音开始，清空补空格状态
@@ -173,6 +231,84 @@ function sendReset(){
   if (!wsReady) return;
   ws.send(JSON.stringify({ type: 'reset' }));
 }
+
+// 通知桌面端：在当前焦点窗口按一次 Enter
+function sendEnter(){
+  if (!wsReady) return;
+  ws.send(JSON.stringify({ type: 'enter' }));
+}
+
+// ---------- 发送历史（仅本机本次发送，存 localStorage）----------
+// 只记录「真正发到电脑」的文本（在底层 send() 里 hook），刷新/重连不丢。
+const HIST_KEY = 'phonemic.history';
+const HIST_MAX = 50; // 与桌面窗口一致，最多留 50 条
+let sendHistory = loadHistory();
+
+function loadHistory(){
+  try {
+    const raw = localStorage.getItem(HIST_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch(e){ return []; }
+}
+function saveHistory(){
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(sendHistory)); }
+  catch(e){ log('history save failed', e.message); }
+}
+// 记录一条发送：追加到末尾（最新在后），超出上限丢最旧，然后重渲染。
+function pushHistory(text){
+  sendHistory.push({ t: Date.now(), text });
+  if (sendHistory.length > HIST_MAX) sendHistory = sendHistory.slice(-HIST_MAX);
+  saveHistory();
+  renderHistory();
+}
+function fmtTime(ts){
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+// 渲染历史列表：最新在上。再发按钮用事件委托（见下），这里只画结构。
+function renderHistory(){
+  if (!sendHistory.length){
+    elHist.innerHTML = '<span class="hist-empty">（还没有发送记录）</span>';
+    return;
+  }
+  let html = '';
+  for (let i = sendHistory.length - 1; i >= 0; i--){
+    const h = sendHistory[i];
+    html += '<div class="hist-item">' +
+      '<span class="txt">' + escapeHtml(h.text) + '</span>' +
+      '<button class="resend" data-idx="' + i + '">再发</button>' +
+      '</div>';
+  }
+  elHist.innerHTML = html;
+}
+// 再次发送：把该条文本填回编辑框（非编辑模式则自动切到编辑模式，否则编辑框隐藏看不见），
+// 由用户改完再手动点「发送到电脑」。
+function resendFromHistory(idx){
+  const h = sendHistory[idx];
+  if (!h) return;
+  if (!elEditMode.checked){
+    elEditMode.checked = true;
+    syncEditUI();
+  }
+  elEdit.value = h.text;
+  finalBuf = h.text;
+  elEdit.focus();
+  log('resend -> edit', h.text);
+}
+// 事件委托：历史区内点「再发」
+elHist.addEventListener('click', e => {
+  const btn = e.target.closest('.resend');
+  if (!btn) return;
+  resendFromHistory(parseInt(btn.dataset.idx, 10));
+});
+// 清空历史
+elHistClear.addEventListener('click', () => {
+  sendHistory = [];
+  saveHistory();
+  renderHistory();
+});
 
 // ---------- bootstrap /info ----------
 fetch('/info').then(r=>r.json()).then(j=>{
@@ -361,6 +497,21 @@ elSendBtn.addEventListener('click', () => {
   log('manual send', text);
 });
 elClearBtn.addEventListener('click', () => { elEdit.value = ''; finalBuf = ''; });
+
+// ---------- 回车按钮：让电脑按一次 Enter ----------
+elEnterBtn.addEventListener('click', () => { sendEnter(); log('enter'); });
+
+// ---------- 统一点击音效 ----------
+// 全局委托：任何 <button>、可点 pill、复选框被点击都播一声「嘀」，给出明确反馈。
+// 用捕获阶段，确保即使子元素 handler 调了 stopPropagation 也能先收到。
+document.addEventListener('pointerup', e => {
+  if (e.target.closest('button, .pill.tap, .toggle, input[type=checkbox]')) {
+    playClick();
+  }
+}, true);
+
+// ---------- 启动时渲染历史 ----------
+renderHistory();
 </script>
 </body>
 </html>
