@@ -251,6 +251,15 @@ func (u *uiState) layoutHeader(gtx layout.Context, conns int) layout.Dimensions 
 			t.Font.Weight = font.Bold
 			return t.Layout(gtx)
 		}),
+		// 版本号：紧跟标题，弱化为次要灰字，与标题基线对齐
+		layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Inset{Top: unit.Dp(10)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				l := material.Label(th, unit.Sp(13), "v"+version)
+				l.Color = colMuted
+				return l.Layout(gtx)
+			})
+		}),
 		layout.Flexed(1, layout.Spacer{}.Layout),
 		// 状态胶囊
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {

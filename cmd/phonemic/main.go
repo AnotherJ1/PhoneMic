@@ -39,7 +39,7 @@ var webFS embed.FS
 
 // version 是应用版本号，作为 /info 的单一可信来源。
 // 声明为 var（而非 const）以便发布时用 -ldflags "-X main.version=..." 覆盖。
-var version = "0.1.0"
+var version = "0.1.3"
 
 // 配对码：6 位大写字母+数字，足够防误连，又便于手输
 const pairCodeLen = 6
