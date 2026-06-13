@@ -39,7 +39,7 @@ var webFS embed.FS
 
 // version 是应用版本号，作为 /info 的单一可信来源。
 // 声明为 var（而非 const）以便发布时用 -ldflags "-X main.version=..." 覆盖。
-var version = "0.1.3"
+var version = "0.1.4"
 
 // 配对码：6 位大写字母+数字，足够防误连，又便于手输
 const pairCodeLen = 6
@@ -185,6 +185,23 @@ func (s *appState) rotateCode() string {
 	return newCode
 }
 
+// broadcast 向所有活跃 WebSocket 连接推送一条 JSON 消息（电脑→手机下行）。
+// 写经各连接自己的写锁串行（见 wsClient.writeJSON），与 ping/pong 不冲突。
+// 单条连接写失败只 log 并跳过，不影响其他连接（容错广播）。
+func (s *appState) broadcast(v any) {
+	s.mu.RLock()
+	clients := make([]*wsClient, 0, len(s.conns))
+	for _, c := range s.conns {
+		clients = append(clients, c)
+	}
+	s.mu.RUnlock()
+	for _, c := range clients {
+		if err := c.writeJSON(v); err != nil {
+			log.Printf("[broadcast] write failed: %v", err)
+		}
+	}
+}
+
 // 生成配对码：用 crypto/rand 防可预测
 func genPairCode() string {
 	b := make([]byte, pairCodeLen)
@@ -312,6 +329,9 @@ func startServer(state *appState) (int, error) {
 	// /upload：手机上传文件/图片，必须带 ?code=XXXX 通过配对校验。
 	// 存盘到 <exe目录>/file/，图片类型额外写入电脑剪贴板（详见 upload.go）。
 	mux.HandleFunc("/upload", handleUpload(state))
+
+	// /download：手机下载电脑推送的文件，必须带 ?id=&code=（详见 transfer.go）。
+	mux.HandleFunc("/download", handleDownload(state))
 
 	// /ws：WebSocket，必须带 ?code=XXXX 通过配对校验后才接受文本
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {

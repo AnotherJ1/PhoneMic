@@ -3,91 +3,133 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <meta name="theme-color" content="#0ea5e9" />
+  <meta name="theme-color" content="#FAF7F2" />
   <title>PhoneMic</title>
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="favicon-180.png" />
   <style>
-    :root { color-scheme: light dark; }
+    /* ===== 暖调极简浅色（与桌面端 gioui 同源）=====
+       bg #FAF7F2 暖米白 / 卡片 #FFFFFF / 墨字 #1A1A1A / 次要 #6B6B6B
+       强调 #E8743B 琥珀橙 / 连接绿 #3DAA6D / 边框 #ECE7DF / 浅块 #F4F1EA */
+    :root{
+      --bg:#FAF7F2; --card:#FFFFFF; --ink:#1A1A1A; --muted:#6B6B6B; --faint:#9B9B94;
+      --accent:#E8743B; --accent-press:#D15F28; --ok:#3DAA6D; --border:#ECE7DF; --sunken:#F4F1EA;
+      color-scheme: light;
+    }
     *{box-sizing:border-box} html,body{margin:0;padding:0}
     body{
-      font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+      font-family: "Space Grotesk", -apple-system, "Segoe UI", system-ui, sans-serif;
       min-height: 100dvh; display:flex; flex-direction:column;
-      background: #0f172a; color:#e2e8f0;
+      background: var(--bg); color:var(--ink);
     }
-    header{padding:16px 20px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between}
+    header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--card)}
     header .brand{display:flex;align-items:center;gap:9px}
     header .brand .logo{flex:none;display:block}
-    header h1{font-size:18px;margin:0;letter-spacing:.5px}
-    header .status{font-size:12px;padding:4px 10px;border-radius:999px;background:#1e293b}
-    header .status.ok{background:#065f46}
-    header .status.err{background:#7f1d1d}
-    main{flex:1;padding:20px;display:flex;flex-direction:column;gap:16px}
+    header h1{font-size:18px;margin:0;letter-spacing:.3px;font-weight:700}
+    header .status{font-size:12px;padding:5px 12px;border-radius:999px;background:var(--sunken);color:var(--muted);font-weight:600}
+    header .status.ok{background:#E4F4EC;color:#1E7B4F}
+    header .status.err{background:#FBE6DE;color:#C2410C}
+    main{flex:1;padding:16px;display:flex;flex-direction:column;gap:14px}
     .live{
-      min-height:120px;padding:14px;border-radius:12px;background:#1e293b;
+      min-height:110px;padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--border);
       font-size:18px;line-height:1.5;white-space:pre-wrap;word-break:break-word
     }
-    .live .interim{color:#94a3b8}
+    .live .interim{color:var(--faint)}
     button{
-      appearance:none;border:0;border-radius:14px;padding:18px;font-size:18px;font-weight:600;
-      background:#0ea5e9;color:white;width:100%;
-      transition:transform .08s ease, background .2s ease;
+      appearance:none;border:0;border-radius:14px;padding:16px;font-size:17px;font-weight:600;
+      background:var(--accent);color:#fff;width:100%;cursor:pointer;
+      transition:transform .08s ease, background .2s ease, filter .2s ease;
     }
-    button:active{transform:scale(.98)}
-    button:disabled{background:#334155;color:#64748b}
-    button.recording{background:#ef4444}
-    button.secondary{background:#334155}
-    button.secondary:active{transform:scale(.98)}
+    button:hover{filter:brightness(.97)}
+    button:active{transform:scale(.985);background:var(--accent-press)}
+    button:disabled{background:var(--sunken);color:var(--faint);cursor:not-allowed}
+    button.recording{background:#E0413B}
+    button.secondary{background:var(--sunken);color:var(--ink)}
+    button.secondary:hover{filter:none;background:#EDE8DF}
+    button.secondary:active{transform:scale(.985);background:#E3DDD2}
     .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .pill{padding:10px 14px;border-radius:999px;background:#1e293b;font-size:13px}
+    .pill{padding:9px 13px;border-radius:999px;background:var(--card);border:1px solid var(--border);font-size:13px;color:var(--muted)}
     .pill.tap{cursor:pointer;user-select:none}
-    .pill.tap:active{background:#334155}
-    .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;margin-left:auto}
-    .toggle input{width:18px;height:18px;accent-color:#0ea5e9}
+    .pill.tap:active{background:var(--sunken)}
+    .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-left:auto}
+    .toggle input{width:18px;height:18px;accent-color:var(--accent)}
     .editbox{
-      width:100%;min-height:60px;padding:12px;border-radius:12px;border:1px solid #334155;
-      background:#0b1120;color:#e2e8f0;font-size:16px;line-height:1.5;resize:vertical;font-family:inherit
+      width:100%;min-height:64px;padding:12px;border-radius:12px;border:1px solid var(--border);
+      background:var(--card);color:var(--ink);font-size:16px;line-height:1.5;resize:vertical;font-family:inherit
     }
+    .editbox:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
     .btnrow{display:flex;gap:8px}
     .btnrow button{flex:1}
     .hidden{display:none}
-    .log{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#64748b;max-height:120px;overflow:auto;padding:8px;background:#0b1120;border-radius:8px}
-    footer{padding:12px 20px;border-top:1px solid #1e293b;font-size:11px;color:#64748b;display:flex;justify-content:space-between}
-    .err{color:#fca5a5}
-    /* 发送历史区 */
-    .hist-head{display:flex;align-items:center;gap:8px}
-    .hist-head .title{font-size:15px;font-weight:600;color:#e2e8f0}
-    .hist{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow:auto}
+    .log{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--faint);max-height:110px;overflow:auto;padding:8px;background:var(--sunken);border-radius:8px}
+    footer{padding:12px 20px;border-top:1px solid var(--border);font-size:11px;color:var(--faint);display:flex;justify-content:space-between;background:var(--card)}
+    .err{color:#C2410C}
+
+    /* ===== Tab 切换 ===== */
+    .tabs{display:flex;gap:6px;padding:5px;background:var(--sunken);border-radius:14px}
+    .tabs .tab{
+      flex:1;text-align:center;padding:11px;border-radius:10px;font-size:15px;font-weight:600;
+      color:var(--muted);cursor:pointer;user-select:none;transition:background .2s,color .2s,box-shadow .2s
+    }
+    .tabs .tab.active{background:var(--card);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+    .tabpane{display:flex;flex-direction:column;gap:14px}
+    .tabpane.hidden{display:none}
+
+    /* ===== 卡片分区标题 ===== */
+    .sec-head{display:flex;align-items:center;gap:8px}
+    .sec-head .title{font-size:15px;font-weight:700;color:var(--ink)}
+    .sec-head .clear{margin-left:auto;font-size:12px}
+
+    /* ===== 发送历史区 ===== */
+    .hist{display:flex;flex-direction:column;gap:8px;max-height:200px;overflow:auto}
     .hist-item{
-      display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
-      background:#0b1120;border:1px solid #1e293b
+      display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;
+      background:var(--card);border:1px solid var(--border)
     }
-    .hist-item .txt{flex:1;font-size:14px;line-height:1.4;word-break:break-word;color:#e2e8f0}
+    .hist-item .txt{flex:1;font-size:14px;line-height:1.4;word-break:break-word;color:var(--ink)}
     .hist-item .resend{
-      flex:none;width:auto;padding:8px 12px;font-size:13px;font-weight:600;border-radius:8px;
-      background:#334155;color:#e2e8f0
+      flex:none;width:auto;padding:8px 12px;font-size:13px;font-weight:600;border-radius:9px;
+      background:var(--sunken);color:var(--ink)
     }
-    .hist-empty{font-size:13px;color:#64748b}
-    /* 上传状态提示 */
-    .upstatus{font-size:13px;padding:8px 12px;border-radius:8px;background:#0b1120;border:1px solid #1e293b}
-    .upstatus.ok{color:#6ee7b7;border-color:#065f46}
-    .upstatus.err{color:#fca5a5;border-color:#7f1d1d}
-    .upstatus.busy{color:#94a3b8}
+    .hist-empty{font-size:13px;color:var(--faint)}
+
+    /* ===== 上传状态提示 ===== */
+    .upstatus{font-size:13px;padding:9px 12px;border-radius:10px;background:var(--card);border:1px solid var(--border);color:var(--muted)}
+    .upstatus.ok{color:#1E7B4F;border-color:#BFE6CF;background:#F0FAF4}
+    .upstatus.err{color:#C2410C;border-color:#F3CBB8;background:#FDF1EB}
+    .upstatus.busy{color:var(--muted)}
+
+    /* ===== 接收区（电脑→手机）===== */
+    .recv{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow:auto}
+    .recv-empty{font-size:13px;color:var(--faint)}
+    .recv-item{
+      display:flex;align-items:center;gap:10px;padding:12px;border-radius:12px;
+      background:var(--card);border:1px solid var(--border)
+    }
+    .recv-item .ic{flex:none;width:22px;height:22px;color:var(--accent)}
+    .recv-item .body{flex:1;min-width:0}
+    .recv-item .meta{font-size:11px;color:var(--faint);margin-bottom:2px}
+    .recv-item .txt{font-size:15px;line-height:1.4;word-break:break-word;color:var(--ink)}
+    .recv-item .act{
+      flex:none;width:auto;padding:9px 14px;font-size:13px;font-weight:600;border-radius:10px;
+      background:var(--sunken);color:var(--ink);text-decoration:none;display:inline-block
+    }
+    .recv-item a.act{background:var(--accent);color:#fff}
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
       <svg class="logo" viewBox="0 0 256 256" width="28" height="28" aria-hidden="true">
-        <rect x="78" y="40" width="100" height="176" rx="22" fill="none" stroke="#38bdf8" stroke-width="9"/>
-        <rect x="113" y="56" width="30" height="6" rx="3" fill="#0ea5e9" opacity=".55"/>
-        <circle cx="128" cy="198" r="6" fill="#0ea5e9" opacity=".55"/>
-        <rect x="113" y="84" width="30" height="56" rx="15" fill="#0ea5e9"/>
-        <path d="M101 126a27 27 0 0 0 54 0" fill="none" stroke="#0ea5e9" stroke-width="8" stroke-linecap="round"/>
-        <rect x="124" y="150" width="8" height="20" rx="4" fill="#0ea5e9"/>
-        <rect x="112" y="168" width="32" height="8" rx="4" fill="#0ea5e9"/>
-        <g fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round">
+        <rect x="78" y="40" width="100" height="176" rx="22" fill="none" stroke="#E8743B" stroke-width="9"/>
+        <rect x="113" y="56" width="30" height="6" rx="3" fill="#E8743B" opacity=".55"/>
+        <circle cx="128" cy="198" r="6" fill="#E8743B" opacity=".55"/>
+        <rect x="113" y="84" width="30" height="56" rx="15" fill="#E8743B"/>
+        <path d="M101 126a27 27 0 0 0 54 0" fill="none" stroke="#E8743B" stroke-width="8" stroke-linecap="round"/>
+        <rect x="124" y="150" width="8" height="20" rx="4" fill="#E8743B"/>
+        <rect x="112" y="168" width="32" height="8" rx="4" fill="#E8743B"/>
+        <g fill="none" stroke="#F0A074" stroke-width="7" stroke-linecap="round">
           <path d="M188 96a26 26 0 0 1 0 64"/>
           <path d="M206 80a48 48 0 0 1 0 96" opacity=".6"/>
         </g>
@@ -98,48 +140,67 @@
   </header>
 
   <main>
+    <!-- 顶部信息行：配对码 / 语言（始终可见，两个 tab 共用）-->
     <div class="row">
       <span class="pill" id="pair">配对中…</span>
       <span class="pill tap" id="lang" title="点击切换语言">zh-CN</span>
-      <label class="toggle"><input type="checkbox" id="editMode" checked>编辑后发送</label>
     </div>
 
-    <div class="row">
-      <label class="toggle" style="margin-left:0"><input type="checkbox" id="contMode">连续模式（点一下开始/停止）</label>
+    <!-- Tab 切换：发送（手机→电脑） / 接收（电脑→手机）-->
+    <div class="tabs">
+      <div class="tab active" id="tabSend" data-pane="send">发送</div>
+      <div class="tab" id="tabRecv" data-pane="recv">接收</div>
     </div>
 
-    <div class="live" id="live"><span class="interim">按住下面的按钮开始说话</span></div>
+    <!-- ===== 发送 pane：原有全部功能（语音录入 + 上传到电脑）===== -->
+    <div class="tabpane" id="paneSend">
+      <div class="row">
+        <label class="toggle" style="margin-left:0"><input type="checkbox" id="editMode" checked>编辑后发送</label>
+        <label class="toggle"><input type="checkbox" id="contMode">连续模式</label>
+      </div>
 
-    <!-- 编辑后发送模式下显示：可编辑识别结果再手动发送 -->
-    <textarea class="editbox hidden" id="edit" placeholder="识别结果会出现在这里，可修改后点发送"></textarea>
-    <div class="btnrow hidden" id="editBtns">
-      <button class="secondary" id="clearBtn">清空</button>
-      <button id="sendBtn">发送到电脑</button>
+      <div class="live" id="live"><span class="interim">按住下面的按钮开始说话</span></div>
+
+      <!-- 编辑后发送模式下显示：可编辑识别结果再手动发送 -->
+      <textarea class="editbox hidden" id="edit" placeholder="识别结果会出现在这里，可修改后点发送"></textarea>
+      <div class="btnrow hidden" id="editBtns">
+        <button class="secondary" id="clearBtn">清空</button>
+        <button id="sendBtn">发送到电脑</button>
+      </div>
+
+      <button id="btn" disabled>按住说话</button>
+
+      <!-- 独立回车按钮：点击让电脑在当前焦点窗口按一次 Enter（发消息 / 换行 / 确认） -->
+      <button class="secondary" id="enterBtn" disabled>↵ 回车</button>
+
+      <!-- 发送图片/文件到电脑：相册选图 / 拍照，上传后电脑存盘，图片额外进电脑剪贴板 -->
+      <div class="btnrow">
+        <button class="secondary" id="pickImgBtn">选图片/文件</button>
+        <button class="secondary" id="shotBtn">拍照</button>
+      </div>
+      <!-- 真正的文件输入，隐藏，由上面两个按钮触发 -->
+      <input type="file" id="fileInput" class="hidden">
+      <input type="file" id="camInput" class="hidden" accept="image/*" capture="environment">
+      <div class="upstatus hidden" id="upStatus"></div>
+
+      <!-- 发送历史：本机本次发送过的文本，存 localStorage，点「再发」填回编辑框 -->
+      <div class="sec-head">
+        <span class="title">发送历史</span>
+        <span class="pill tap clear" id="histClear" title="清空历史">清空</span>
+      </div>
+      <div class="hist" id="hist"></div>
+
+      <div class="log" id="log"></div>
     </div>
 
-    <button id="btn" disabled>按住说话</button>
-
-    <!-- 独立回车按钮：点击让电脑在当前焦点窗口按一次 Enter（发消息 / 换行 / 确认） -->
-    <button class="secondary" id="enterBtn" disabled>↵ 回车</button>
-
-    <!-- 发送图片/文件到电脑：相册选图 / 拍照，上传后电脑存盘，图片额外进电脑剪贴板 -->
-    <div class="btnrow">
-      <button class="secondary" id="pickImgBtn">🖼 选图片/文件</button>
-      <button class="secondary" id="shotBtn">📷 拍照</button>
+    <!-- ===== 接收 pane：电脑推送来的文本 / 文件 ===== -->
+    <div class="tabpane hidden" id="paneRecv">
+      <div class="sec-head">
+        <span class="title">来自电脑</span>
+        <span class="pill tap clear" id="recvClear" title="清空接收记录">清空</span>
+      </div>
+      <div class="recv" id="recv"></div>
     </div>
-    <!-- 真正的文件输入，隐藏，由上面两个按钮触发 -->
-    <input type="file" id="fileInput" class="hidden">
-    <input type="file" id="camInput" class="hidden" accept="image/*" capture="environment">
-    <div class="upstatus hidden" id="upStatus"></div>
-
-    <!-- 发送历史：本机本次发送过的文本，存 localStorage，点「再发」填回编辑框 -->
-    <div class="hist-head">
-      <span class="title">发送历史</span>
-      <span class="pill tap" id="histClear" title="清空历史" style="margin-left:auto;font-size:12px">清空</span>
-    </div>
-    <div class="hist" id="hist"></div>
-
-    <div class="log" id="log"></div>
   </main>
 
   <footer>
@@ -159,7 +220,10 @@ const elStatus = $('status'), elLive = $('live'), elBtn = $('btn'),
       elEnterBtn = $('enterBtn'),
       elHist = $('hist'), elHistClear = $('histClear'),
       elPickImgBtn = $('pickImgBtn'), elShotBtn = $('shotBtn'),
-      elFileInput = $('fileInput'), elCamInput = $('camInput'), elUpStatus = $('upStatus');
+      elFileInput = $('fileInput'), elCamInput = $('camInput'), elUpStatus = $('upStatus'),
+      elTabSend = $('tabSend'), elTabRecv = $('tabRecv'),
+      elPaneSend = $('paneSend'), elPaneRecv = $('paneRecv'),
+      elRecv = $('recv'), elRecvClear = $('recvClear');
 
 // 支持的识别语言，点击 pill 循环切换
 const LANGS = ['zh-CN', 'en-US'];
@@ -233,7 +297,20 @@ function wsConnect() {
     setTimeout(wsConnect, 1500);
   };
   ws.onerror   = e => log('ws error', String(e.message || e.type || e));
-  ws.onmessage = e => log('ws msg', e.data);
+  ws.onmessage = e => {
+    log('ws msg', e.data);
+    let msg;
+    try { msg = JSON.parse(e.data); } catch(_){ return; }
+    // 电脑→手机下行：文本 / 文件下载通知
+    if (msg.type === 'push-text') {
+      addRecvText(msg.text || '', msg.t);
+      flashRecvTab();
+    } else if (msg.type === 'push-file') {
+      addRecvFile(msg.id, msg.name || '文件', msg.size || 0, msg.t);
+      flashRecvTab();
+    }
+    // pong 等其余类型忽略
+  };
 }
 
 function send(text){
@@ -356,8 +433,12 @@ if (!SR) {
 // 录音状态机：
 //   recording  —— 当前是否处于"应该在录音"的逻辑状态（用户意图）
 //   manualStop —— 标记本次 onend 是用户主动停止，区别于浏览器静音自动停
-//   restarting —— 防止 onend 自动重启与新一轮 start 叠加
-let rec = null, finalBuf = '', recording = false, manualStop = false, restartTimer = null;
+//   micDenied  —— 麦克风被拒（not-allowed）的「致命」标志。一旦置位，彻底阻断所有
+//                 自动重启，避免 start→error→end→start 死循环刷屏。仅当用户重新
+//                 按下按钮（一次新的明确手势）时清除，让其有机会在授权后重试。
+//                 单靠 manualStop 不够：onend 与 onerror 存在时序竞争，onend 可能先
+//                 触发并安排重启，导致拦截失效（见用户实测日志）。
+let rec = null, finalBuf = '', recording = false, manualStop = false, restartTimer = null, micDenied = false;
 
 // 编辑模式：识别结果追加进编辑框，等用户手动发；非编辑模式：实时发。
 // 编辑模式下以编辑框为准（finalBuf 跟随其内容）——必须「追加」而非整框赋值，
@@ -394,6 +475,8 @@ function startRec(){
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       recording = false;
       manualStop = true;
+      micDenied = true;              // 置致命标志，彻底阻断 onend 的自动重启
+      clearTimeout(restartTimer);    // 清掉可能已被 onend 安排的重启，斩断死循环
       if (location.protocol !== 'https:') {
         setStatus('需用 https:// 打开才能用麦克风', 'err');
         elLive.innerHTML = '<span class="err">当前是 http，浏览器禁止麦克风。<br>请在地址栏改成 https:// 重新打开。</span>';
@@ -415,10 +498,10 @@ function startRec(){
     // 还按着、recording 仍为 true，若不重启识别器就「假死」，继续说话无反应。
     // recording / manualStop 两个标志已足以表达用户意图，无需再看 contMode。
     // 延迟重启避开 Android Chrome 在 onend 内立即 start 抛 InvalidStateError。
-    if (recording && !manualStop) {
+    if (recording && !manualStop && !micDenied) {
       clearTimeout(restartTimer);
       restartTimer = setTimeout(() => {
-        if (recording && !manualStop) {
+        if (recording && !manualStop && !micDenied) {
           try { startRec(); log('sr auto-restart'); }
           catch(e){ log('sr restart failed', e.message); }
         }
@@ -462,6 +545,7 @@ function beginRecording(){
   }
   recording = true;
   manualStop = false;
+  micDenied = false; // 用户重新按下 = 新的明确手势，清除致命标志，允许重试授权
   // 实时模式才清空 finalBuf；编辑模式保留已有文本，便于多段口述后统一发送
   if (!elEditMode.checked){ finalBuf = ''; sendReset(); }
   syncBtn();
@@ -577,17 +661,96 @@ elShotBtn.addEventListener('click', () => elCamInput.click());
 elFileInput.addEventListener('change', () => { uploadFile(elFileInput.files[0]); elFileInput.value = ''; });
 elCamInput.addEventListener('change', () => { uploadFile(elCamInput.files[0]); elCamInput.value = ''; });
 
+// ---------- Tab 切换：发送 / 接收 ----------
+function switchTab(pane){
+  const send = pane === 'send';
+  elTabSend.classList.toggle('active', send);
+  elTabRecv.classList.toggle('active', !send);
+  elPaneSend.classList.toggle('hidden', !send);
+  elPaneRecv.classList.toggle('hidden', send);
+}
+elTabSend.addEventListener('click', () => switchTab('send'));
+elTabRecv.addEventListener('click', () => switchTab('recv'));
+// 收到新推送时，若用户不在接收 tab，给接收 tab 一个高亮提示（标题加圆点）
+function flashRecvTab(){
+  if (!elTabRecv.classList.contains('active')) {
+    elTabRecv.textContent = '接收 ●';
+  }
+}
+// 切到接收 tab 时清掉提示圆点
+elTabRecv.addEventListener('click', () => { elTabRecv.textContent = '接收'; });
+
+// ---------- 接收区（电脑→手机）渲染 ----------
+// 收到的内容只存本次会话内存（不落 localStorage——下行多为临时内容，刷新即弃）。
+function recvTimeStr(t){
+  const d = t ? new Date(t) : new Date();
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function clearRecvEmpty(){
+  const e = elRecv.querySelector('.recv-empty');
+  if (e) e.remove();
+}
+// 文本卡：显示文本 + 复制按钮
+function addRecvText(text, t){
+  clearRecvEmpty();
+  const item = document.createElement('div');
+  item.className = 'recv-item';
+  item.innerHTML =
+    '<div class="body"><div class="meta">' + recvTimeStr(t) + ' · 文本</div>' +
+    '<div class="txt">' + escapeHtml(text) + '</div></div>' +
+    '<button class="act copy">复制</button>';
+  item.querySelector('.copy').addEventListener('click', () => copyText(text, item.querySelector('.copy')));
+  elRecv.insertBefore(item, elRecv.firstChild); // 最新在上
+}
+// 文件卡：显示文件名/大小 + 下载链接（指向 /download?id=&code=）
+function addRecvFile(id, name, size, t){
+  clearRecvEmpty();
+  const href = '/download?id=' + encodeURIComponent(id) + '&code=' + encodeURIComponent(pairCode);
+  const sizeStr = size > 1048576 ? (size/1048576).toFixed(1)+' MB'
+                : size > 1024   ? (size/1024).toFixed(0)+' KB' : size+' B';
+  const item = document.createElement('div');
+  item.className = 'recv-item';
+  item.innerHTML =
+    '<div class="body"><div class="meta">' + recvTimeStr(t) + ' · 文件 · ' + sizeStr + '</div>' +
+    '<div class="txt">' + escapeHtml(name) + '</div></div>' +
+    '<a class="act" href="' + href + '" download="' + escapeHtml(name) + '">下载</a>';
+  elRecv.insertBefore(item, elRecv.firstChild);
+}
+// 复制文本到手机剪贴板：优先 navigator.clipboard，降级 execCommand
+function copyText(text, btn){
+  const done = () => { if (btn){ const o = btn.textContent; btn.textContent = '已复制'; setTimeout(()=>btn.textContent=o, 1200); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, done){
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove(); done();
+  } catch(e){ log('copy failed', e.message); }
+}
+function renderRecvEmpty(){
+  if (!elRecv.children.length) elRecv.innerHTML = '<span class="recv-empty">（电脑发来的文本/文件会出现在这里）</span>';
+}
+elRecvClear.addEventListener('click', () => { elRecv.innerHTML = ''; renderRecvEmpty(); });
+
 // ---------- 统一点击音效 ----------
 // 全局委托：任何 <button>、可点 pill、复选框被点击都播一声「嘀」，给出明确反馈。
 // 用捕获阶段，确保即使子元素 handler 调了 stopPropagation 也能先收到。
 document.addEventListener('pointerup', e => {
-  if (e.target.closest('button, .pill.tap, .toggle, input[type=checkbox]')) {
+  if (e.target.closest('button, .pill.tap, .toggle, input[type=checkbox], .tab')) {
     playClick();
   }
 }, true);
 
-// ---------- 启动时渲染历史 ----------
+// ---------- 启动时渲染 ----------
 renderHistory();
+renderRecvEmpty();
 </script>
 </body>
 </html>

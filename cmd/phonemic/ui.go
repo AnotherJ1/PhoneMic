@@ -1,8 +1,8 @@
 // gioui 桌面窗口：把 appState 渲染成界面，承载二维码 / 连接状态 / 文字记录 /
 // 配对码操作。纯 Go、无 CGO（gioui 走系统 API / Direct3D / Vulkan）。
 //
-// 视觉风格：深色主题，呼应手机端网页（深蓝灰底 #0f172a + sky 蓝主色 #0ea5e9），
-// 卡片化分区、圆角、状态胶囊，桌面/手机品牌统一。
+// 视觉风格：暖调极简浅色，呼应手机端网页（暖米白底 #FAF7F2 + 琥珀橙主色 #E8743B），
+// 卡片化分区、圆角、状态胶囊、接收/发送双 Tab，桌面/手机品牌统一。
 //
 // 关键约定（见设计文档「数据流」）：
 //   - UI 单向只读 state（snapshot / connCount / recentTexts），不反向驱动 server。
@@ -41,18 +41,19 @@ import (
 // uiRefreshInterval 是定时重绘间隔：连接状态 / 文字记录靠它跟上 server 侧变化。
 const uiRefreshInterval = 500 * time.Millisecond
 
-// ---- 深色主题调色板（与手机端 index.html 同源）----
+// ---- 暖调极简浅色调色板（与手机端 index.html 同源）----
 var (
-	colBg      = color.NRGBA{R: 0x0f, G: 0x17, B: 0x2a, A: 0xff} // 窗口底：slate-900
-	colCard    = color.NRGBA{R: 0x1e, G: 0x29, B: 0x3b, A: 0xff} // 卡片：slate-800
-	colCardAlt = color.NRGBA{R: 0x0b, G: 0x11, B: 0x20, A: 0xff} // 更深的内嵌块
-	colAccent  = color.NRGBA{R: 0x0e, G: 0xa5, B: 0xe9, A: 0xff} // 主色：sky-500
-	colText    = color.NRGBA{R: 0xe2, G: 0xe8, B: 0xf0, A: 0xff} // 主文字：slate-200
-	colMuted   = color.NRGBA{R: 0x94, G: 0xa3, B: 0xb8, A: 0xff} // 次要文字：slate-400
-	colFaint   = color.NRGBA{R: 0x64, G: 0x74, B: 0x8b, A: 0xff} // 更弱：slate-500
-	colDotOn   = color.NRGBA{R: 0x10, G: 0xb9, B: 0x81, A: 0xff} // 绿：有连接 emerald-500
-	colDotOff  = color.NRGBA{R: 0x47, G: 0x55, B: 0x69, A: 0xff} // 灰：无连接 slate-600
-	colPillOn  = color.NRGBA{R: 0x06, G: 0x5f, B: 0x46, A: 0xff} // 状态胶囊底（连接）
+	colBg      = color.NRGBA{R: 0xFA, G: 0xF7, B: 0xF2, A: 0xff} // 窗口底：暖米白
+	colCard    = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xff} // 卡片：纯白
+	colCardAlt = color.NRGBA{R: 0xF4, G: 0xF1, B: 0xEA, A: 0xff} // 内嵌浅块
+	colAccent  = color.NRGBA{R: 0xE8, G: 0x74, B: 0x3B, A: 0xff} // 主色：琥珀橙
+	colText    = color.NRGBA{R: 0x1A, G: 0x1A, B: 0x1A, A: 0xff} // 主文字：墨黑
+	colMuted   = color.NRGBA{R: 0x6B, G: 0x6B, B: 0x6B, A: 0xff} // 次要文字：暖灰
+	colFaint   = color.NRGBA{R: 0x9B, G: 0x9B, B: 0x94, A: 0xff} // 更弱
+	colDotOn   = color.NRGBA{R: 0x3D, G: 0xAA, B: 0x6D, A: 0xff} // 绿：有连接
+	colDotOff  = color.NRGBA{R: 0xC9, G: 0xC2, B: 0xB6, A: 0xff} // 灰：无连接
+	colPillOn  = color.NRGBA{R: 0xE4, G: 0xF4, B: 0xEC, A: 0xff} // 状态胶囊底（连接）：浅绿
+	colBorder  = color.NRGBA{R: 0xEC, G: 0xE7, B: 0xDF, A: 0xff} // 分隔/边框
 	colWhite   = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
 )
 
@@ -87,14 +88,28 @@ func runUI(state *appState) {
 
 // uiState 持有 gioui widget 与跨帧缓存（二维码图）。
 type uiState struct {
-	th         *material.Theme
-	copyBtn    widget.Clickable
-	rotateBtn  widget.Clickable
-	copyLogBtn widget.Clickable // 复制全部历史消息到剪贴板
-	openLogBtn    widget.Clickable // 用系统默认程序打开历史日志文件
-	openDirBtn    widget.Clickable // 在文件管理器打开上传文件存放目录 file/
+	th             *material.Theme
+	copyBtn        widget.Clickable
+	rotateBtn      widget.Clickable
+	copyLogBtn     widget.Clickable   // 复制全部历史消息到剪贴板
+	openLogBtn     widget.Clickable   // 用系统默认程序打开历史日志文件
+	openDirBtn     widget.Clickable   // 在文件管理器打开上传文件存放目录 file/
 	copyRecordBtns []widget.Clickable // 逐条消息复制按钮
-	list          widget.List
+	list           widget.List
+
+	// Tab 切换：0 = 接收（手机→电脑），1 = 发送（电脑→手机）
+	activeTab  int
+	tabRecvBtn widget.Clickable
+	tabSendBtn widget.Clickable
+	// 发送 tab 控件
+	sendEditor   widget.Editor      // 待发送到手机的文本
+	sendTextBtn  widget.Clickable   // 发送文本
+	pickFileBtn  widget.Clickable   // 选文件发送
+	sendList     widget.List        // 发送记录列表滚动
+	sentCopyBtns []widget.Clickable // 发送记录逐条复制（文本类）
+	// 发送瞬时反馈
+	sendHintAt time.Time
+	sendHint   string
 
 	// 复制成功后的视觉反馈：记录各复制按钮「最近一次成功复制」的时刻，
 	// 渲染时若距今 < copiedFeedbackDur 就把按钮文案临时换成「已复制」态。
@@ -117,6 +132,13 @@ func isCopied(at time.Time) bool {
 	return !at.IsZero() && time.Since(at) < copiedFeedbackDur
 }
 
+// setSendHint 记录一条发送区瞬时提示；约 copiedFeedbackDur 后由渲染逻辑自动隐藏
+// （复用既有 500ms 定时 Invalidate，无需另开 ticker）。可在 goroutine 中调用。
+func (u *uiState) setSendHint(s string) {
+	u.sendHint = s
+	u.sendHintAt = time.Now()
+}
+
 func newUIState() *uiState {
 	// 默认 Go 字体不含 CJK；追加系统中文字体（失败则降级，仅记 warning）。
 	collection := gofont.Collection()
@@ -134,6 +156,8 @@ func newUIState() *uiState {
 
 	u := &uiState{th: th}
 	u.list.Axis = layout.Vertical
+	u.sendList.Axis = layout.Vertical
+	u.sendEditor.SingleLine = false
 	return u
 }
 
@@ -147,7 +171,7 @@ func loopUI(w *app.Window, state *appState) error {
 			return e.Err
 		case app.FrameEvent:
 			gtx := app.NewContext(&ops, e)
-			// 整窗深色背景
+			// 整窗暖米白背景
 			paint.Fill(gtx.Ops, colBg)
 			u.layout(gtx, state)
 			e.Frame(gtx.Ops)
@@ -195,6 +219,42 @@ func (u *uiState) layout(gtx layout.Context, state *appState) layout.Dimensions 
 		openPath(dir)
 	}
 
+	// ---- Tab 切换 ----
+	if u.tabRecvBtn.Clicked(gtx) {
+		u.activeTab = 0
+	}
+	if u.tabSendBtn.Clicked(gtx) {
+		u.activeTab = 1
+	}
+
+	// ---- 发送 tab：发送文本到手机 ----
+	if u.sendTextBtn.Clicked(gtx) {
+		text := strings.TrimSpace(u.sendEditor.Text())
+		if text == "" {
+			u.setSendHint("请输入要发送的文本")
+		} else if sendTextToPhone(state, text) {
+			u.sendEditor.SetText("")
+			u.setSendHint("已发送到手机")
+		} else {
+			u.sendEditor.SetText("")
+			u.setSendHint("已发送（当前没有已连接的手机）")
+		}
+	}
+
+	// ---- 发送 tab：选文件发送到手机 ----
+	if u.pickFileBtn.Clicked(gtx) {
+		// 弹原生选文件框可能阻塞 UI 线程，放 goroutine 避免卡帧。
+		// pickAndSendFile 内部已做读取/广播，完成后设提示（下一帧 Invalidate 刷新）。
+		go func() {
+			name, ok := pickAndSendFile(state)
+			if ok {
+				u.setSendHint("已发送到手机：" + name)
+			} else if name != "" {
+				u.setSendHint("读取文件失败：" + name)
+			}
+		}()
+	}
+
 	// 监听逐条复制按钮点击
 	for i := range u.copyRecordBtns {
 		if u.copyRecordBtns[i].Clicked(gtx) {
@@ -232,13 +292,48 @@ func (u *uiState) layout(gtx layout.Context, state *appState) layout.Dimensions 
 					return u.layoutPairing(gtx, url, code)
 				})
 			}),
-			layout.Rigid(layout.Spacer{Height: unit.Dp(16)}.Layout),
-			// 底部：文字记录卡（占据剩余空间，可滚动）
+			layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
+			// Tab 条：接收 / 发送
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return u.layoutTabs(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
+			// 底部：按 activeTab 显示接收 / 发送 pane（占据剩余空间）
 			layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 				return card(gtx, colCard, unit.Dp(16), func(gtx layout.Context) layout.Dimensions {
+					if u.activeTab == 1 {
+						return u.layoutSendSection(gtx, state)
+					}
 					return u.layoutRecordsSection(gtx, records)
 				})
 			}),
+		)
+	})
+}
+
+// layoutTabs 画「接收 / 发送」两个 tab 按钮。activeTab 高亮强调色。
+func (u *uiState) layoutTabs(gtx layout.Context) layout.Dimensions {
+	tab := func(btn *widget.Clickable, label string, active bool) layout.Widget {
+		return func(gtx layout.Context) layout.Dimensions {
+			b := material.Button(u.th, btn, label)
+			if active {
+				b.Background = colCard
+				b.Color = colAccent
+			} else {
+				b.Background = colCardAlt
+				b.Color = colMuted
+			}
+			b.CornerRadius = unit.Dp(10)
+			b.TextSize = unit.Sp(15)
+			b.Inset = layout.UniformInset(unit.Dp(11))
+			return b.Layout(gtx)
+		}
+	}
+	return card(gtx, colCardAlt, unit.Dp(5), func(gtx layout.Context) layout.Dimensions {
+		return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+			layout.Flexed(1, tab(&u.tabRecvBtn, "接收", u.activeTab == 0)),
+			layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+			layout.Flexed(1, tab(&u.tabSendBtn, "发送", u.activeTab == 1)),
 		)
 	})
 }
@@ -388,7 +483,7 @@ func (u *uiState) layoutRecordsSection(gtx layout.Context, records []textRecord)
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					l := material.Label(th, unit.Sp(15), "实时文字记录")
+					l := material.Label(th, unit.Sp(15), "来自手机")
 					l.Color = colText
 					l.Font.Weight = font.Bold
 					return l.Layout(gtx)
@@ -416,6 +511,149 @@ func (u *uiState) layoutRecordsSection(gtx layout.Context, records []textRecord)
 			return u.layoutRecords(gtx, records)
 		}),
 	)
+}
+
+// layoutSendSection 发送 tab：文本输入框 + 发送/选文件按钮 + 瞬时提示 + 发送记录列表。
+func (u *uiState) layoutSendSection(gtx layout.Context, state *appState) layout.Dimensions {
+	th := u.th
+	sent := transfer.recentSent()
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		// 标题
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			l := material.Label(th, unit.Sp(15), "发送到手机")
+			l.Color = colText
+			l.Font.Weight = font.Bold
+			return l.Layout(gtx)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+		// 文本输入框（浅块背景 + 边框）
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return borderedBox(gtx, func(gtx layout.Context) layout.Dimensions {
+				gtx.Constraints.Min.Y = gtx.Dp(unit.Dp(56))
+				ed := material.Editor(th, &u.sendEditor, "输入文本，发送到手机…")
+				ed.Color = colText
+				ed.HintColor = colFaint
+				return ed.Layout(gtx)
+			})
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
+		// 按钮行：发送文本 / 选文件发送
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					b := material.Button(th, &u.sendTextBtn, "发送文本")
+					b.Background = colAccent
+					b.Color = colWhite
+					b.CornerRadius = unit.Dp(10)
+					b.TextSize = unit.Sp(14)
+					b.Inset = layout.UniformInset(unit.Dp(11))
+					return b.Layout(gtx)
+				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					b := material.Button(th, &u.pickFileBtn, "选文件发送")
+					b.Background = colCardAlt
+					b.Color = colText
+					b.CornerRadius = unit.Dp(10)
+					b.TextSize = unit.Sp(14)
+					b.Inset = layout.UniformInset(unit.Dp(11))
+					return b.Layout(gtx)
+				}),
+			)
+		}),
+		// 瞬时提示（约 1.5s 自动消失）
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if u.sendHint == "" || !isCopied(u.sendHintAt) {
+				return layout.Dimensions{}
+			}
+			return layout.Inset{Top: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				l := material.Label(th, unit.Sp(13), u.sendHint)
+				l.Color = colAccent
+				return l.Layout(gtx)
+			})
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(14)}.Layout),
+		// 发送记录小标题
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			l := material.Label(th, unit.Sp(13), "发送记录")
+			l.Color = colMuted
+			return l.Layout(gtx)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
+		// 发送记录列表（占剩余空间，可滚动）
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return u.layoutSentRecords(gtx, sent)
+		}),
+	)
+}
+
+// layoutSentRecords 发送记录列表：每条「时间 · 图标 文本/文件名」，文本类带复制按钮。
+func (u *uiState) layoutSentRecords(gtx layout.Context, sent []sentRecord) layout.Dimensions {
+	th := u.th
+	if len(sent) == 0 {
+		l := material.Label(th, unit.Sp(13), "（还没有发送记录）")
+		l.Color = colFaint
+		return l.Layout(gtx)
+	}
+	// 确保文本类复制按钮数量足够（按记录索引对应）
+	for len(u.sentCopyBtns) < len(sent) {
+		u.sentCopyBtns = append(u.sentCopyBtns, widget.Clickable{})
+	}
+	// 处理复制点击
+	for i := range sent {
+		if i < len(u.sentCopyBtns) && u.sentCopyBtns[i].Clicked(gtx) && sent[i].kind == "text" {
+			if err := clipboard.WriteAll(sent[i].text); err != nil {
+				log.Printf("[ui] copy sent %d failed: %v", i, err)
+			}
+		}
+	}
+	return material.List(th, &u.sendList).Layout(gtx, len(sent), func(gtx layout.Context, i int) layout.Dimensions {
+		rec := sent[i]
+		return layout.Inset{Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			return card(gtx, colCardAlt, unit.Dp(10), func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						ts := material.Label(th, unit.Sp(12), rec.t.Format("15:04:05"))
+						ts.Color = colFaint
+						return ts.Layout(gtx)
+					}),
+					layout.Rigid(layout.Spacer{Width: unit.Dp(10)}.Layout),
+					layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+						prefix := "→ "
+						if rec.kind == "file" {
+							prefix = "→ 文件 "
+						}
+						l := material.Label(th, unit.Sp(14), prefix+rec.text)
+						l.Color = colText
+						return l.Layout(gtx)
+					}),
+					// 文本类提供复制按钮；文件类无（已在手机端下载）
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						if rec.kind != "text" || i >= len(u.sentCopyBtns) {
+							return layout.Dimensions{}
+						}
+						return layout.Inset{Left: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+							return smallButton(gtx, th, &u.sentCopyBtns[i], "复制", colCard)
+						})
+					}),
+				)
+			})
+		})
+	})
+}
+
+// borderedBox 画一个带边框的浅块容器（用于文本输入框外观）。
+func borderedBox(gtx layout.Context, w layout.Widget) layout.Dimensions {
+	macro := op.Record(gtx.Ops)
+	dims := layout.UniformInset(unit.Dp(12)).Layout(gtx, w)
+	call := macro.Stop()
+	rr := gtx.Dp(unit.Dp(12))
+	rect := clip.RRect{Rect: image.Rectangle{Max: dims.Size}, SE: rr, SW: rr, NW: rr, NE: rr}
+	// 填底
+	defer rect.Push(gtx.Ops).Pop()
+	paint.Fill(gtx.Ops, colCardAlt)
+	call.Add(gtx.Ops)
+	return dims
 }
 
 // layoutRecords 文字记录列表：最近 N 条（新的在上），可纵向滚动。
@@ -473,10 +711,21 @@ func card(gtx layout.Context, bg color.NRGBA, pad unit.Dp, w layout.Widget) layo
 	macro := op.Record(gtx.Ops)
 	dims := layout.UniformInset(pad).Layout(gtx, w)
 	call := macro.Stop()
-	// 先画圆角底，再回放内容
 	rr := gtx.Dp(unit.Dp(14))
-	defer clip.RRect{Rect: image.Rectangle{Max: dims.Size}, SE: rr, SW: rr, NW: rr, NE: rr}.Push(gtx.Ops).Pop()
-	paint.Fill(gtx.Ops, bg)
+	rect := image.Rectangle{Max: dims.Size}
+	rrect := clip.RRect{Rect: rect, SE: rr, SW: rr, NW: rr, NE: rr}
+	// 1. 圆角填底
+	func() {
+		defer rrect.Push(gtx.Ops).Pop()
+		paint.Fill(gtx.Ops, bg)
+	}()
+	// 2. 细边框：浅色风格下纯白卡浮在米白底对比弱，描 1px 边框区分层次。
+	//    用 clip.Stroke 沿同一圆角路径描边。
+	func() {
+		defer clip.Stroke{Path: rrect.Path(gtx.Ops), Width: float32(gtx.Dp(unit.Dp(1)))}.Op().Push(gtx.Ops).Pop()
+		paint.Fill(gtx.Ops, colBorder)
+	}()
+	// 3. 回放内容
 	call.Add(gtx.Ops)
 	return dims
 }
