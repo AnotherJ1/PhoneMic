@@ -69,6 +69,11 @@
       background:#334155;color:#e2e8f0
     }
     .hist-empty{font-size:13px;color:#64748b}
+    /* 上传状态提示 */
+    .upstatus{font-size:13px;padding:8px 12px;border-radius:8px;background:#0b1120;border:1px solid #1e293b}
+    .upstatus.ok{color:#6ee7b7;border-color:#065f46}
+    .upstatus.err{color:#fca5a5;border-color:#7f1d1d}
+    .upstatus.busy{color:#94a3b8}
   </style>
 </head>
 <body>
@@ -117,6 +122,16 @@
     <!-- 独立回车按钮：点击让电脑在当前焦点窗口按一次 Enter（发消息 / 换行 / 确认） -->
     <button class="secondary" id="enterBtn" disabled>↵ 回车</button>
 
+    <!-- 发送图片/文件到电脑：相册选图 / 拍照，上传后电脑存盘，图片额外进电脑剪贴板 -->
+    <div class="btnrow">
+      <button class="secondary" id="pickImgBtn">🖼 选图片/文件</button>
+      <button class="secondary" id="shotBtn">📷 拍照</button>
+    </div>
+    <!-- 真正的文件输入，隐藏，由上面两个按钮触发 -->
+    <input type="file" id="fileInput" class="hidden">
+    <input type="file" id="camInput" class="hidden" accept="image/*" capture="environment">
+    <div class="upstatus hidden" id="upStatus"></div>
+
     <!-- 发送历史：本机本次发送过的文本，存 localStorage，点「再发」填回编辑框 -->
     <div class="hist-head">
       <span class="title">发送历史</span>
@@ -142,7 +157,9 @@ const elStatus = $('status'), elLive = $('live'), elBtn = $('btn'),
       elEdit = $('edit'), elEditBtns = $('editBtns'),
       elSendBtn = $('sendBtn'), elClearBtn = $('clearBtn'),
       elEnterBtn = $('enterBtn'),
-      elHist = $('hist'), elHistClear = $('histClear');
+      elHist = $('hist'), elHistClear = $('histClear'),
+      elPickImgBtn = $('pickImgBtn'), elShotBtn = $('shotBtn'),
+      elFileInput = $('fileInput'), elCamInput = $('camInput'), elUpStatus = $('upStatus');
 
 // 支持的识别语言，点击 pill 循环切换
 const LANGS = ['zh-CN', 'en-US'];
@@ -342,13 +359,16 @@ if (!SR) {
 //   restarting —— 防止 onend 自动重启与新一轮 start 叠加
 let rec = null, finalBuf = '', recording = false, manualStop = false, restartTimer = null;
 
-// 编辑模式：识别结果只累积到 finalBuf，不立即发；非编辑模式：实时发
+// 编辑模式：识别结果追加进编辑框，等用户手动发；非编辑模式：实时发。
+// 编辑模式下以编辑框为准（finalBuf 跟随其内容）——必须「追加」而非整框赋值，
+// 否则每来一段 final 都会用 finalBuf 整体覆盖编辑框，冲掉用户的手动修改与光标。
 function emitFinal(text){
-  finalBuf += text;
   if (elEditMode.checked) {
-    elEdit.value = finalBuf; // 进编辑框，等用户手动发
+    elEdit.value += text;     // 追加到末尾，保留用户已有的编辑
+    finalBuf = elEdit.value;  // finalBuf 跟随编辑框，供实时显示区与后续累积使用
   } else {
-    send(text);              // 实时发到电脑
+    finalBuf += text;
+    send(text);               // 实时发到电脑
   }
 }
 
@@ -390,9 +410,12 @@ function startRec(){
   };
   rec.onend = () => {
     log('sr end');
-    // 仅当：仍想录音 + 不是用户主动停 + 连续模式 时才自动重启。
+    // 仍想录音 + 不是用户主动停，就自动重启——按住模式与连续模式同样适用：
+    // Chrome 的 Web Speech 在持续静音几秒后会自行 onend，此时按住模式下用户手指
+    // 还按着、recording 仍为 true，若不重启识别器就「假死」，继续说话无反应。
+    // recording / manualStop 两个标志已足以表达用户意图，无需再看 contMode。
     // 延迟重启避开 Android Chrome 在 onend 内立即 start 抛 InvalidStateError。
-    if (recording && !manualStop && elContMode.checked) {
+    if (recording && !manualStop) {
       clearTimeout(restartTimer);
       restartTimer = setTimeout(() => {
         if (recording && !manualStop) {
@@ -409,7 +432,10 @@ function startRec(){
 function stopRec(){
   clearTimeout(restartTimer);
   if (rec){
-    try { rec.onend = null; rec.stop(); } catch(e){} // 先摘掉 onend，杜绝重启
+    // 先摘 onend 杜绝自动重启；保留 onresult 让 stop() flush 出来的尾音仍能进缓冲。
+    // stop() 偶发抛错（如已停止）不应静默吞掉——记下来便于排障，rec 仍务必清空。
+    rec.onend = null;
+    try { rec.stop(); } catch(e){ log('sr stop failed', e.message); }
     rec = null;
     log('sr stop');
   }
@@ -486,6 +512,10 @@ elContMode.addEventListener('change', () => {
   syncBtn();
 });
 
+// 用户在编辑框里手动改动时，finalBuf 跟随其内容。否则下一段 final 追加时
+// 以及实时显示区都会沿用旧 finalBuf，造成用户编辑被回退。
+elEdit.addEventListener('input', () => { finalBuf = elEdit.value; });
+
 // ---------- 编辑模式下：发送 / 清空 ----------
 elSendBtn.addEventListener('click', () => {
   const text = elEdit.value.trim();
@@ -500,6 +530,52 @@ elClearBtn.addEventListener('click', () => { elEdit.value = ''; finalBuf = ''; }
 
 // ---------- 回车按钮：让电脑按一次 Enter ----------
 elEnterBtn.addEventListener('click', () => { sendEnter(); log('enter'); });
+
+// ---------- 发送图片/文件到电脑 ----------
+// 走独立 HTTP 端点 /upload（multipart），带配对码鉴权。电脑存盘到 file/ 目录，
+// 图片类型额外写入电脑剪贴板。两个隐藏 input 分别对应「选文件」与「拍照」。
+function setUpStatus(text, kind){
+  elUpStatus.textContent = text;
+  elUpStatus.className = 'upstatus ' + (kind || '');
+  elUpStatus.classList.toggle('hidden', !text);
+}
+
+// 上传单个文件到电脑。成功后按返回信息提示是否已进剪贴板。
+function uploadFile(file){
+  if (!file) return;
+  if (!pairCode){ setUpStatus('缺少配对码，无法上传', 'err'); return; }
+  // 前端粗略拦超大文件（后端仍有 100MB 硬限），给即时反馈
+  const MAX = 100 * 1024 * 1024;
+  if (file.size > MAX){
+    setUpStatus('文件超过 100MB 上限：' + (file.size/1048576).toFixed(1) + 'MB', 'err');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('file', file, file.name || 'upload');
+  setUpStatus('上传中…（' + (file.size/1024).toFixed(0) + ' KB）', 'busy');
+  elPickImgBtn.disabled = true; elShotBtn.disabled = true;
+  fetch('/upload?code=' + encodeURIComponent(pairCode), { method: 'POST', body: fd })
+    .then(r => r.json().catch(() => ({ ok: false, error: 'HTTP ' + r.status })))
+    .then(j => {
+      if (j.ok){
+        let msg = '已发送到电脑：' + (j.name || '');
+        if (j.isImage) msg += j.clipboard ? '（已进电脑剪贴板，可 Ctrl+V 粘贴）' : '（已存盘，但剪贴板写入失败）';
+        setUpStatus(msg, 'ok');
+        log('upload ok', j);
+      } else {
+        setUpStatus('上传失败：' + (j.error || '未知错误'), 'err');
+        log('upload fail', j);
+      }
+    })
+    .catch(e => { setUpStatus('上传出错：' + e.message, 'err'); log('upload error', e.message); })
+    .finally(() => { elPickImgBtn.disabled = false; elShotBtn.disabled = false; });
+}
+
+elPickImgBtn.addEventListener('click', () => elFileInput.click());
+elShotBtn.addEventListener('click', () => elCamInput.click());
+// change 后取文件上传，并清空 value 以便连续选同一文件也能再次触发
+elFileInput.addEventListener('change', () => { uploadFile(elFileInput.files[0]); elFileInput.value = ''; });
+elCamInput.addEventListener('change', () => { uploadFile(elCamInput.files[0]); elCamInput.value = ''; });
 
 // ---------- 统一点击音效 ----------
 // 全局委托：任何 <button>、可点 pill、复选框被点击都播一声「嘀」，给出明确反馈。

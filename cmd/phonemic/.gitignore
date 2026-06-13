@@ -5,3 +5,6 @@ dist/
 
 # go test/cover
 *.coverprofile
+
+# 手机上传文件的运行时存放目录（用户文件，不入库）
+file/

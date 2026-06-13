@@ -92,6 +92,7 @@ type uiState struct {
 	rotateBtn  widget.Clickable
 	copyLogBtn widget.Clickable // 复制全部历史消息到剪贴板
 	openLogBtn    widget.Clickable // 用系统默认程序打开历史日志文件
+	openDirBtn    widget.Clickable // 在文件管理器打开上传文件存放目录 file/
 	copyRecordBtns []widget.Clickable // 逐条消息复制按钮
 	list          widget.List
 
@@ -183,6 +184,15 @@ func (u *uiState) layout(gtx layout.Context, state *appState) layout.Dimensions 
 	if u.openLogBtn.Clicked(gtx) {
 		// 用系统默认程序打开完整历史日志文件
 		openPath(historyLogPath())
+	}
+	if u.openDirBtn.Clicked(gtx) {
+		// 在文件管理器打开手机上传文件的存放目录 file/。
+		// 目录可能尚未创建（还没传过文件），先确保存在再打开，避免打开失败。
+		dir := uploadDir()
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			log.Printf("[ui] mkdir %s failed: %v", dir, err)
+		}
+		openPath(dir)
 	}
 
 	// 监听逐条复制按钮点击
@@ -394,6 +404,10 @@ func (u *uiState) layoutRecordsSection(gtx layout.Context, records []textRecord)
 				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return smallButton(gtx, th, &u.openLogBtn, "打开日志", colCardAlt)
+				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(6)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return smallButton(gtx, th, &u.openDirBtn, "文件夹", colCardAlt)
 				}),
 			)
 		}),

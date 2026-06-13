@@ -309,6 +309,10 @@ func startServer(state *appState) (int, error) {
 		})
 	})
 
+	// /upload：手机上传文件/图片，必须带 ?code=XXXX 通过配对校验。
+	// 存盘到 <exe目录>/file/，图片类型额外写入电脑剪贴板（详见 upload.go）。
+	mux.HandleFunc("/upload", handleUpload(state))
+
 	// /ws：WebSocket，必须带 ?code=XXXX 通过配对校验后才接受文本
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		code, _, _ := state.snapshot()
